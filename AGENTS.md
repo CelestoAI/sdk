@@ -10,7 +10,7 @@ Celesto SDK is a Python client + CLI for the Celesto AI platform. It provides:
 
 ```
 celesto-sdk/
-├── src/celesto_sdk/       # SDK + CLI source code
+├── src/celesto/       # SDK + CLI source code
 │   ├── sdk/               # SDK client, exceptions, types
 │   ├── main.py            # CLI app entrypoint (typer)
 │   ├── deployment.py      # CLI deployment helpers

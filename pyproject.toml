@@ -32,13 +32,13 @@ repository = "https://github.com/CelestoAI/celesto-sdk"
 documentation = "https://docs.celesto.ai/celesto-sdk"
 
 [project.scripts]
-celesto = "celesto_sdk:app"
+celesto = "celesto:app"
 
 [tool.hatch.version]
-path = "src/celesto_sdk/__init__.py"
+path = "src/celesto/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/celesto_sdk"]
+packages = ["src/celesto"]
 
 [tool.uv]
 package = true
