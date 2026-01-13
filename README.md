@@ -5,7 +5,7 @@ Python SDK and CLI for the Celesto AI platform.
 ## Install
 
 ```bash
-pip install celesto-sdk
+pip install celesto
 ```
 
 ## Configure

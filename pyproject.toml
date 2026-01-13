@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "celesto-sdk"
+name = "celesto"
 description = "Python SDK and CLI for the Celesto AI platform."
 dynamic = ["version"]
 readme = "README.md"
