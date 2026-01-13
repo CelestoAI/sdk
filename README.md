@@ -27,7 +27,7 @@ celesto a2a get-card --agent http://localhost:8000
 ## SDK
 
 ```python
-from celesto_sdk.sdk import CelestoSDK
+from celesto.sdk import CelestoSDK
 
 client = CelestoSDK()
 print(client.deployment.list())

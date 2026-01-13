@@ -1,4 +1,4 @@
-from celesto_sdk.sdk import CelestoSDK
+from celesto.sdk import CelestoSDK
 
 
 def test_sdk_exposes_service_clients():
