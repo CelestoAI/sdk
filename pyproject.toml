@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "celesto-sdk"
+description = "Python SDK and CLI for the Celesto AI platform."
+dynamic = ["version"]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "a2a-sdk>=0.3.10",
+    "fastmcp>=2.7.1",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "rich>=14.0.0",
+    "typer>=0.20.0",
+    "typing-extensions>=4.10.0",
+]
+license-files = ["LICENSE"]
+authors = [
+    { name="Aniket Maurya", email="aniket@celesto.ai" }
+]
+keywords = ["Celesto", "SDK", "API", "Agents"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+]
+homepage = "https://celesto.ai"
+repository = "https://github.com/CelestoAI/celesto-sdk"
+documentation = "https://docs.celesto.ai/celesto-sdk"
+
+[project.scripts]
+celesto = "celesto_sdk:app"
+
+[tool.hatch.version]
+path = "src/celesto_sdk/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/celesto_sdk"]
+
+[tool.uv]
+package = true
+
+[tool.isort]
+profile = "black"
+src_paths = ["src"]
+
+[tool.ruff]
+src = ["src"]
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.12.4",
+]
