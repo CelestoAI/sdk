@@ -278,6 +278,25 @@ class Deployment(_BaseClient):
 
         raise CelestoValidationError(f"Project '{project_name}' not found.")
 
+    def _resolve_first_project_id(self) -> str:
+        """Resolve the first available project ID."""
+        response = self._request(
+            "GET",
+            "/projects",
+            params={"skip": 0, "limit": 1},
+        )
+        projects = response.get("data") or []
+        if not projects:
+            raise CelestoValidationError(
+                "No projects found. Create a project or specify project_name."
+            )
+        project_id = projects[0].get("id")
+        if not project_id:
+            raise CelestoValidationError(
+                "First project missing id in response."
+            )
+        return project_id
+
     def _create_deployment(
         self,
         bundle: Path,
@@ -325,7 +344,7 @@ class Deployment(_BaseClient):
             name: Unique name for the deployment
             description: Human-readable description (optional)
             envs: Environment variables to inject (optional)
-            project_name: Project name to scope the deployment (required)
+            project_name: Project name to scope the deployment (optional; defaults to first project)
 
         Returns:
             Deployment result with 'id', 'status', and other metadata
@@ -349,12 +368,10 @@ class Deployment(_BaseClient):
             raise CelestoValidationError(f"Folder {folder} is not a directory")
 
         resolved_project_name = project_name or os.environ.get("CELESTO_PROJECT_NAME")
-        if not resolved_project_name:
-            raise CelestoValidationError(
-                "project_name is required. Pass project_name or set CELESTO_PROJECT_NAME."
-            )
-
-        resolved_project_id = self._resolve_project_id(resolved_project_name)
+        if resolved_project_name:
+            resolved_project_id = self._resolve_project_id(resolved_project_name)
+        else:
+            resolved_project_id = self._resolve_first_project_id()
 
         # Create tar.gz archive (Nixpacks expects tar.gz format)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz") as temp_file:

@@ -111,7 +111,7 @@ def deploy(
         None,
         "--project",
         "-p",
-        help="Celesto project name (or set CELESTO_PROJECT_NAME env var)",
+        help="Celesto project name (optional; defaults to first project)",
     ),
     api_key: Optional[str] = typer.Option(
         None,
@@ -134,10 +134,6 @@ def deploy(
     final_api_key = _get_api_key(api_key, ignore_env_file, "CELESTO_API_KEY")
 
     resolved_project_name = project_name or os.environ.get("CELESTO_PROJECT_NAME")
-    if not resolved_project_name:
-        console.print("❌ [bold red]Error:[/bold red] Project name not found.")
-        console.print("Provide it via [bold]--project[/bold] or set [bold]CELESTO_PROJECT_NAME[/bold].")
-        raise typer.Exit(1)
 
     # Validate folder path
     folder_path = Path(folder).resolve()
