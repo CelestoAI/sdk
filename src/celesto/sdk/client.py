@@ -257,7 +257,7 @@ class Deployment(_BaseClient):
         while True:
             response = self._request(
                 "GET",
-                "/projects",
+                "/projects/",
                 params={"skip": skip, "limit": limit},
             )
             projects = response.get("data") or []
@@ -282,7 +282,7 @@ class Deployment(_BaseClient):
         """Resolve the first available project ID."""
         response = self._request(
             "GET",
-            "/projects",
+            "/projects/",
             params={"skip": 0, "limit": 1},
         )
         projects = response.get("data") or []
