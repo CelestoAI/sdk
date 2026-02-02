@@ -107,7 +107,7 @@ with CelestoSDK() as client:
 - Format is identical to `.gitignore` (uses gitignore-style pattern matching)
 - Supports patterns like `*.pyc`, `__pycache__/`, `node_modules/`, `.env`, etc.
 - Comments (lines starting with `#`) and empty lines are ignored
-- Inline comments (e.g., `*.pyc # Python compiled files`) are supported
+- Inline comments supported: ` #` (space before `#`) starts a comment; `#` without space is literal (e.g., `file#name`)
 - Directories are filtered before recursion for efficiency
 - Implementation uses the `pathspec` library with `gitignore` pattern type
 
@@ -329,10 +329,10 @@ logs/
 - Directories are filtered before recursion for performance
 - Files are checked with forward-slash paths for cross-platform compatibility
 - Empty lines and comments (starting with `#`) are automatically filtered out
-- Inline comments (e.g., `*.pyc # comment`) are supported - everything after `#` is stripped
+- Inline comments supported per gitignore spec: ` #` (space before `#`) starts a comment, but `#` without preceding space is literal (e.g., `file#name` matches literally)
 - If `.celestoignore` doesn't exist, deployment proceeds without filtering
 - If `.celestoignore` can't be read or parsed, a warning is printed to stderr and deployment continues without filtering
-- Comprehensive test suite in [tests/test_celestoignore.py](tests/test_celestoignore.py)
+- Comprehensive test suite in [tests/test_celestoignore.py](tests/test_celestoignore.py) and [tests/test_celestoignore_spec.py](tests/test_celestoignore_spec.py)
 
 ### Working with Multipart Uploads
 

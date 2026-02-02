@@ -316,19 +316,27 @@ class Deployment(_BaseClient):
             with open(ignore_file, "r", encoding="utf-8") as f:
                 patterns = f.read().splitlines()
 
-            # Process patterns: strip inline comments and filter empty lines
+            # Process patterns according to gitignore spec:
+            # 1. Lines starting with # (after whitespace) are comments
+            # 2. Inline comments: # preceded by space (e.g., "pattern # comment")
+            # 3. # without preceding space is literal (e.g., "file#name")
             processed_patterns = []
             for line in patterns:
-                # Strip inline comments (everything after #)
-                if '#' in line:
-                    line = line[:line.index('#')]
+                # Strip inline comments: only ' #' (space followed by #) starts a comment
+                # Find the first occurrence of ' #' pattern
+                space_hash_idx = line.find(' #')
+                if space_hash_idx >= 0:
+                    # Strip from the space before # onwards
+                    line = line[:space_hash_idx]
 
-                # Strip whitespace
+                # Strip leading/trailing whitespace
                 line = line.strip()
 
-                # Skip empty lines
-                if line:
-                    processed_patterns.append(line)
+                # Skip empty lines and full-line comments (lines starting with #)
+                if not line or line.startswith('#'):
+                    continue
+
+                processed_patterns.append(line)
 
             return pathspec.PathSpec.from_lines("gitignore", processed_patterns)
         except OSError as e:
