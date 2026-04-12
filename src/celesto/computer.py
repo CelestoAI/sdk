@@ -144,9 +144,33 @@ def run_command(
     as_json: JsonOption = False,
     api_key: ApiKeyOption = None,
 ):
-    """Execute a command on a computer."""
+    """Execute a command on a computer. Automatically resumes stopped computers."""
+    import time
+
+    from .sdk.exceptions import CelestoServerError
+
     with _get_client(api_key) as client:
-        result = client.computers.exec(computer_id, command, timeout=timeout)
+        try:
+            result = client.computers.exec(computer_id, command, timeout=timeout)
+        except CelestoServerError as e:
+            if "stopped" in str(e).lower() or "409" in str(e):
+                if not as_json:
+                    console.print(f"[yellow]Computer is stopped. Resuming...[/yellow]")
+                client.computers.start(computer_id)
+                # Wait for it to be running
+                for _ in range(30):
+                    info = client.computers.get(computer_id)
+                    if info.get("status") == "running":
+                        break
+                    time.sleep(1)
+                else:
+                    console.print("[red]Computer failed to resume.[/red]")
+                    raise typer.Exit(1)
+                if not as_json:
+                    console.print("[green]Computer resumed.[/green]")
+                result = client.computers.exec(computer_id, command, timeout=timeout)
+            else:
+                raise
 
     if as_json:
         _print_json(result)
@@ -165,16 +189,33 @@ def ssh_to_computer(
     computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
     api_key: ApiKeyOption = None,
 ):
-    """Open an interactive terminal session on a computer."""
+    """Open an interactive terminal session on a computer. Automatically resumes stopped computers."""
     import os
     import signal
     import termios
     import threading
+    import time
     import tty
 
     import websockets.sync.client
 
     key = _get_api_key(api_key)
+
+    # Check if computer is stopped and auto-resume
+    with _get_client(api_key) as client:
+        info = client.computers.get(computer_id)
+        if info.get("status") == "stopped":
+            console.print(f"[yellow]Computer is stopped. Resuming...[/yellow]")
+            client.computers.start(computer_id)
+            for _ in range(30):
+                info = client.computers.get(computer_id)
+                if info.get("status") == "running":
+                    break
+                time.sleep(1)
+            else:
+                console.print("[red]Computer failed to resume.[/red]")
+                raise typer.Exit(1)
+            console.print("[green]Computer resumed.[/green]")
 
     base_url = os.environ.get("CELESTO_BASE_URL", "https://api.celesto.ai/v1")
     ws_url = base_url.replace("https://", "wss://").replace("http://", "ws://")
