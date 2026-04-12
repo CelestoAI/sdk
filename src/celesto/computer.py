@@ -198,8 +198,8 @@ def ssh_to_computer(
         console.print(f"[red]Connection failed:[/red] {e}")
         raise typer.Exit(1)
 
-    # Send auth
-    ws.send(json.dumps({"token": key, "org_id": _resolve_org_id(key)}))
+    # Send auth (org_id is optional — backend resolves it from API key)
+    ws.send(json.dumps({"token": key}))
 
     # Get terminal size
     rows, cols = os.get_terminal_size()
@@ -216,8 +216,15 @@ def ssh_to_computer(
         ws.socket.setblocking(False)
 
         while True:
+            # Break if socket is closed
+            if ws.socket.fileno() == -1:
+                break
+
             # Check for input from stdin or websocket
-            readable, _, _ = select.select([stdin_fd, ws.socket], [], [], 0.05)
+            try:
+                readable, _, _ = select.select([stdin_fd, ws.socket], [], [], 0.05)
+            except (ValueError, OSError):
+                break  # socket closed
 
             for fd in readable:
                 if fd == stdin_fd:
@@ -227,7 +234,10 @@ def ssh_to_computer(
                     # Ctrl+] to disconnect
                     if b"\x1d" in data:
                         return
-                    ws.send(data.decode("utf-8", errors="replace"))
+                    try:
+                        ws.send(data.decode("utf-8", errors="replace"))
+                    except (websockets.exceptions.ConnectionClosed, OSError):
+                        return
                 else:
                     try:
                         msg = ws.recv(timeout=0)
@@ -237,7 +247,7 @@ def ssh_to_computer(
                             os.write(sys.stdout.fileno(), msg)
                     except TimeoutError:
                         pass
-                    except websockets.exceptions.ConnectionClosed:
+                    except (websockets.exceptions.ConnectionClosed, OSError):
                         return
 
             # Handle terminal resize
@@ -246,7 +256,7 @@ def ssh_to_computer(
                 if (new_rows, new_cols) != (rows, cols):
                     rows, cols = new_rows, new_cols
                     ws.send(json.dumps({"type": "resize", "cols": cols, "rows": rows}))
-            except OSError:
+            except (OSError, websockets.exceptions.ConnectionClosed):
                 pass
 
     except KeyboardInterrupt:
