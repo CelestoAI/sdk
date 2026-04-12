@@ -2,6 +2,6 @@
 
 from .main import app
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 __all__ = ["app", "__version__"]
