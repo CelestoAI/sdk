@@ -3,17 +3,13 @@ from __future__ import annotations
 import typer
 from rich import print
 
-from . import a2a, computer, deployment, proxy
+from . import computer
 
-app = typer.Typer()
-app.add_typer(proxy.app)
-app.add_typer(a2a.app, name="a2a")
+app = typer.Typer(
+    help="Infrastructure for sandboxes and computer-use agents.",
+    no_args_is_help=True,
+)
 app.add_typer(computer.app, name="computer")
-
-# Add deployment commands at top level
-app.command("deploy")(deployment.deploy)
-app.command("list")(deployment.list_deployments)
-app.command("ls")(deployment.list_deployments)  # Alias for list
 
 
 @app.callback(invoke_without_command=True)
@@ -22,10 +18,10 @@ def main(ctx: typer.Context):
         print(
             """[orange_red1]
     ╭──────────────────────────────────────────────────────────────────────╮
-    │         Fastest way to build, prototype and deploy AI Agents.        │
-    │                         [bold][link=https://celesto.ai]by Celesto AI[/link][/bold]                                │
-    ╰──────────────────────────────────────────────────────────────────────┘
-[range_red1]
+    │      Infrastructure for sandboxes and computer-use agents.           │
+    │                    [bold][link=https://celesto.ai]https://celesto.ai[/link][/bold]                              │
+    ╰──────────────────────────────────────────────────────────────────────╯
+[/orange_red1]
 """
         )
         typer.echo(ctx.get_help())

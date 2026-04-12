@@ -14,8 +14,18 @@ from typing_extensions import Annotated
 from .deployment import _get_api_key
 from .sdk.client import CelestoSDK
 
-app = typer.Typer(help="Manage sandboxed computers.")
+app = typer.Typer(help="Create, manage, and connect to sandboxed computers.")
 console = Console()
+
+# Common option types
+ApiKeyOption = Annotated[
+    Optional[str],
+    typer.Option("--api-key", "-k", help="Celesto API key"),
+]
+JsonOption = Annotated[
+    bool,
+    typer.Option("--json", "-j", help="Output as JSON (for machines and AI agents)"),
+]
 
 
 def _get_client(api_key: str | None = None) -> CelestoSDK:
@@ -25,7 +35,6 @@ def _get_client(api_key: str | None = None) -> CelestoSDK:
 
 
 def _status_color(status: str) -> str:
-    """Get Rich color for a status."""
     colors = {
         "creating": "yellow",
         "running": "green",
@@ -45,31 +54,29 @@ def _format_memory(mb: int) -> str:
     return f"{mb} MB"
 
 
+def _print_json(data: object) -> None:
+    """Print JSON to stdout (no Rich formatting)."""
+    sys.stdout.write(json.dumps(data, indent=2, default=str) + "\n")
+
+
 @app.command("create")
 def create_computer(
-    name: Annotated[
-        Optional[str],
-        typer.Option(
-            "--name", "-n", help="Friendly name (display only, not sent to API)"
-        ),
-    ] = None,
     cpus: Annotated[
-        int,
-        typer.Option("--cpus", "-c", help="Number of virtual CPUs"),
+        int, typer.Option("--cpus", "-c", help="Number of virtual CPUs")
     ] = 1,
-    memory: Annotated[
-        int,
-        typer.Option("--memory", "-m", help="Memory in MB"),
-    ] = 1024,
-    api_key: Annotated[
-        Optional[str],
-        typer.Option("--api-key", "-k", help="Celesto API key"),
-    ] = None,
+    memory: Annotated[int, typer.Option("--memory", "-m", help="Memory in MB")] = 1024,
+    as_json: JsonOption = False,
+    api_key: ApiKeyOption = None,
 ):
     """Create a new sandboxed computer."""
     with _get_client(api_key) as client:
-        console.print("Creating computer...", style="dim")
+        if not as_json:
+            console.print("Creating computer...", style="dim")
         result = client.computers.create(cpus=cpus, memory=memory)
+
+    if as_json:
+        _print_json(result)
+        return
 
     cname = result.get("name", "")
     cid = result["id"]
@@ -87,14 +94,8 @@ def create_computer(
 
 @app.command("list")
 def list_computers(
-    api_key: Annotated[
-        Optional[str],
-        typer.Option("--api-key", "-k", help="Celesto API key"),
-    ] = None,
-    output: Annotated[
-        Optional[str],
-        typer.Option("--output", "-o", help="Output format: table or json"),
-    ] = "table",
+    as_json: JsonOption = False,
+    api_key: ApiKeyOption = None,
 ):
     """List all computers."""
     with _get_client(api_key) as client:
@@ -102,8 +103,8 @@ def list_computers(
 
     computers = result.get("computers", [])
 
-    if output == "json":
-        console.print_json(json.dumps(computers))
+    if as_json:
+        _print_json(computers)
         return
 
     if not computers:
@@ -135,49 +136,34 @@ def list_computers(
 
 @app.command("run")
 def run_command(
-    computer_id: Annotated[
-        str,
-        typer.Argument(help="Computer ID or name"),
-    ],
-    command: Annotated[
-        str,
-        typer.Argument(help="Command to execute"),
-    ],
+    computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
+    command: Annotated[str, typer.Argument(help="Command to execute")],
     timeout: Annotated[
-        int,
-        typer.Option("--timeout", "-t", help="Timeout in seconds"),
+        int, typer.Option("--timeout", "-t", help="Timeout in seconds")
     ] = 30,
-    api_key: Annotated[
-        Optional[str],
-        typer.Option("--api-key", "-k", help="Celesto API key"),
-    ] = None,
+    as_json: JsonOption = False,
+    api_key: ApiKeyOption = None,
 ):
     """Execute a command on a computer."""
     with _get_client(api_key) as client:
         result = client.computers.exec(computer_id, command, timeout=timeout)
 
-    # Print stdout
+    if as_json:
+        _print_json(result)
+        return
+
     if result.get("stdout"):
         sys.stdout.write(result["stdout"])
-
-    # Print stderr to stderr
     if result.get("stderr"):
         sys.stderr.write(result["stderr"])
 
-    # Exit with the command's exit code
     raise typer.Exit(result.get("exit_code", 0))
 
 
 @app.command("ssh")
 def ssh_to_computer(
-    computer_id: Annotated[
-        str,
-        typer.Argument(help="Computer ID or name"),
-    ],
-    api_key: Annotated[
-        Optional[str],
-        typer.Option("--api-key", "-k", help="Celesto API key"),
-    ] = None,
+    computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
+    api_key: ApiKeyOption = None,
 ):
     """Open an interactive terminal session on a computer."""
     import os
@@ -190,7 +176,6 @@ def ssh_to_computer(
 
     key = _get_api_key(api_key)
 
-    # Build WebSocket URL
     base_url = os.environ.get("CELESTO_BASE_URL", "https://api.celesto.ai/v1")
     ws_url = base_url.replace("https://", "wss://").replace("http://", "ws://")
     ws_url = f"{ws_url}/computers/{computer_id}/terminal"
@@ -203,22 +188,18 @@ def ssh_to_computer(
         console.print(f"[red]Connection failed:[/red] {e}")
         raise typer.Exit(1)
 
-    # Send auth (org_id is optional — backend resolves it from API key)
     ws.send(json.dumps({"token": key}))
 
-    # Get terminal size
     rows, cols = os.get_terminal_size()
     ws.send(json.dumps({"type": "resize", "cols": cols, "rows": rows}))
 
     console.print("[dim]Connected. Press Ctrl+] to disconnect.[/dim]")
 
-    # Switch terminal to raw mode
     stdin_fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(stdin_fd)
     done = threading.Event()
 
     def recv_loop():
-        """Read from WebSocket, write to stdout."""
         try:
             while not done.is_set():
                 try:
@@ -235,7 +216,6 @@ def ssh_to_computer(
             done.set()
 
     def handle_sigwinch(*_args):
-        """Send terminal resize to guest on SIGWINCH."""
         nonlocal rows, cols
         try:
             new_rows, new_cols = os.get_terminal_size()
@@ -247,15 +227,11 @@ def ssh_to_computer(
 
     try:
         tty.setraw(stdin_fd)
-
-        # Handle terminal resize via signal (cleaner than polling)
         old_sigwinch = signal.signal(signal.SIGWINCH, handle_sigwinch)
 
-        # Start receiver thread
         receiver = threading.Thread(target=recv_loop, daemon=True)
         receiver.start()
 
-        # Main thread: read stdin, send to WebSocket
         while not done.is_set():
             try:
                 data = os.read(stdin_fd, 4096)
@@ -263,7 +239,6 @@ def ssh_to_computer(
                 break
             if not data:
                 break
-            # Ctrl+] to disconnect
             if b"\x1d" in data:
                 break
             try:
@@ -284,28 +259,60 @@ def ssh_to_computer(
         console.print("\n[dim]Disconnected.[/dim]")
 
 
+@app.command("stop")
+def stop_computer(
+    computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
+    as_json: JsonOption = False,
+    api_key: ApiKeyOption = None,
+):
+    """Stop a running computer."""
+    with _get_client(api_key) as client:
+        result = client.computers.stop(computer_id)
+
+    if as_json:
+        _print_json(result)
+        return
+
+    console.print(f"[dim]Computer {computer_id} is being stopped.[/dim]")
+
+
+@app.command("start")
+def start_computer(
+    computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
+    as_json: JsonOption = False,
+    api_key: ApiKeyOption = None,
+):
+    """Start a stopped computer."""
+    with _get_client(api_key) as client:
+        result = client.computers.start(computer_id)
+
+    if as_json:
+        _print_json(result)
+        return
+
+    console.print(f"[dim]Computer {computer_id} is being started.[/dim]")
+
+
 @app.command("delete")
 def delete_computer(
-    computer_id: Annotated[
-        str,
-        typer.Argument(help="Computer ID or name"),
-    ],
+    computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
     force: Annotated[
-        bool,
-        typer.Option("--force", "-f", help="Skip confirmation"),
+        bool, typer.Option("--force", "-f", help="Skip confirmation")
     ] = False,
-    api_key: Annotated[
-        Optional[str],
-        typer.Option("--api-key", "-k", help="Celesto API key"),
-    ] = None,
+    as_json: JsonOption = False,
+    api_key: ApiKeyOption = None,
 ):
     """Delete a computer."""
-    if not force:
+    if not force and not as_json:
         confirm = typer.confirm(f"Delete computer {computer_id}?")
         if not confirm:
             raise typer.Abort()
 
     with _get_client(api_key) as client:
-        client.computers.delete(computer_id)
+        result = client.computers.delete(computer_id)
+
+    if as_json:
+        _print_json(result)
+        return
 
     console.print(f"[dim]Computer {computer_id} is being deleted.[/dim]")

@@ -16,15 +16,12 @@ pip install celesto
 from celesto.sdk import CelestoSDK
 
 with CelestoSDK() as client:
-    # Spin up a sandbox
     computer = client.computers.create(cpus=2, memory=2048)
-    print(f"Computer ready: {computer['id']}")
+    print(f"Computer ready: {computer['name']}")
 
-    # Run anything
     result = client.computers.exec(computer["id"], "uname -a")
     print(result["stdout"])
 
-    # Clean up
     client.computers.delete(computer["id"])
 ```
 
@@ -34,9 +31,9 @@ Or from the command line:
 export CELESTO_API_KEY="your-api-key"
 
 celesto computer create --cpus 2 --memory 2048
-celesto computer run <id> "ls -la"
-celesto computer ssh <id>       # interactive shell
-celesto computer delete <id>
+celesto computer run einstein "ls -la"
+celesto computer ssh einstein       # interactive shell
+celesto computer delete einstein
 ```
 
 ## Why Celesto?
@@ -70,13 +67,11 @@ client = CelestoSDK(api_key="your-api-key")
 
 ## Computers API
 
-### Create a computer
+### Create
 
 ```python
-computer = client.computers.create(
-    cpus=2,        # 1-16 CPUs
-    memory=2048,   # 512-32768 MB
-)
+computer = client.computers.create(cpus=2, memory=2048)
+print(computer["name"])  # e.g., "einstein"
 ```
 
 ### Execute commands
@@ -87,26 +82,20 @@ print(result["stdout"])
 print(result["exit_code"])
 ```
 
-Set a timeout (default 30s, max 300s):
-
-```python
-result = client.computers.exec(computer["id"], "long-running-script.sh", timeout=120)
-```
-
 ### Lifecycle
 
 ```python
-client.computers.stop(computer_id)     # pause the VM
-client.computers.start(computer_id)    # resume it
-client.computers.delete(computer_id)   # destroy it
+client.computers.stop(computer_id)
+client.computers.start(computer_id)
+client.computers.delete(computer_id)
 ```
 
-### List computers
+### List
 
 ```python
 result = client.computers.list()
 for vm in result["computers"]:
-    print(f"{vm['id']}: {vm['status']}")
+    print(f"{vm['name']}: {vm['status']}")
 ```
 
 ## CLI
@@ -115,9 +104,21 @@ for vm in result["computers"]:
 |---|---|
 | `celesto computer create [--cpus N] [--memory MB]` | Create a computer |
 | `celesto computer list` | List all computers |
-| `celesto computer run <id> "command"` | Execute a command |
-| `celesto computer ssh <id>` | Interactive shell |
-| `celesto computer delete <id> [--force]` | Destroy a computer |
+| `celesto computer run <name> "command"` | Execute a command |
+| `celesto computer ssh <name>` | Interactive shell |
+| `celesto computer stop <name>` | Stop a computer |
+| `celesto computer start <name>` | Start a stopped computer |
+| `celesto computer delete <name> [--force]` | Delete a computer |
+
+### JSON output
+
+All commands support `--json` for machine-readable output:
+
+```bash
+celesto computer list --json
+celesto computer create --cpus 2 --memory 2048 --json
+celesto computer run einstein "uname -a" --json
+```
 
 ## Error Handling
 
@@ -130,13 +131,6 @@ from celesto.sdk.exceptions import (
     CelestoServerError,          # 5xx
     CelestoNetworkError,         # connection failures
 )
-
-try:
-    result = client.computers.create()
-except CelestoAuthenticationError:
-    print("Bad API key -- check https://celesto.ai > Settings > Security")
-except CelestoRateLimitError as e:
-    print(f"Rate limited. Retry in {e.retry_after}s")
 ```
 
 ## Links
@@ -144,7 +138,6 @@ except CelestoRateLimitError as e:
 - [Documentation](https://docs.celesto.ai/celesto-sdk)
 - [Platform](https://celesto.ai)
 - [GitHub](https://github.com/CelestoAI/sdk)
-- [Issues](https://github.com/CelestoAI/sdk/issues)
 
 ## License
 
