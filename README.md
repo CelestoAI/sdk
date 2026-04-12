@@ -11,12 +11,14 @@ Python SDK and CLI for the [Celesto AI platform](https://celesto.ai) - Deploy an
 Celesto is a managed AI platform that enables you to:
 - **Deploy AI agents** to production with automatic scaling and monitoring
 - **Manage delegated access** to end-user resources (Google Drive, etc.) through GateKeeper
+- **Run sandboxed computers** for AI agents with full VM isolation
 - **Build faster** with infrastructure handled for you
 
 ## Features
 
 - **Agent Deployment**: Deploy your AI agents as containerized applications with zero infrastructure management
 - **GateKeeper**: Secure delegated access management with OAuth and fine-grained permissions for user resources
+- **Computers**: Create and manage sandboxed virtual machines for AI agent workloads
 - **CLI & SDK**: Flexible interfaces for both interactive usage and programmatic integration
 - **Project Organization**: Organize your agents and access rules by projects
 - **Automatic Scaling**: Your agents scale automatically based on demand
@@ -308,6 +310,52 @@ result = client.gatekeeper.clear_access_rules(connection_id)
 print(f"Access unrestricted: {result['unrestricted']}")  # True
 ```
 
+### Computers API
+
+#### Create a Computer
+
+```python
+with CelestoSDK() as client:
+    computer = client.computers.create(vcpus=2, ram_mb=2048)
+    print(f"Computer ID: {computer['id']}")
+    print(f"Status: {computer['status']}")
+```
+
+**Parameters:**
+- `vcpus` (int): Number of virtual CPUs (1-16, default: 1)
+- `ram_mb` (int): Memory in MB (512-32768, default: 1024)
+- `image` (str): OS image name (default: "ubuntu-desktop-24.04")
+
+#### List Computers
+
+```python
+result = client.computers.list()
+for computer in result["computers"]:
+    print(f"{computer['id']}: {computer['status']}")
+```
+
+#### Execute a Command
+
+```python
+result = client.computers.exec(computer_id, "uname -a", timeout=30)
+print(result["stdout"])
+if result["exit_code"] != 0:
+    print(f"Error: {result['stderr']}")
+```
+
+**Parameters:**
+- `computer_id` (str): Computer ID
+- `command` (str): Shell command to execute
+- `timeout` (int): Timeout in seconds (1-300, default: 30)
+
+#### Stop / Start / Delete
+
+```python
+client.computers.stop(computer_id)
+client.computers.start(computer_id)
+client.computers.delete(computer_id)
+```
+
 ## CLI Reference
 
 The Celesto CLI provides command-line access to all SDK features.
@@ -320,6 +368,28 @@ celesto deploy --project "My Project"
 
 # List deployments
 celesto ls
+```
+
+### Computer Commands
+
+```bash
+# Create a new sandboxed computer
+celesto computer create --cpus 2 --memory 2048
+
+# List all computers
+celesto computer list
+
+# Execute a command on a computer
+celesto computer run <computer-id> "uname -a"
+
+# Open an interactive SSH session
+celesto computer ssh <computer-id>
+
+# Delete a computer
+celesto computer delete <computer-id>
+
+# Delete without confirmation prompt
+celesto computer delete <computer-id> --force
 ```
 
 ### A2A (Agent-to-Agent) Commands

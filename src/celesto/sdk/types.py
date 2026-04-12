@@ -103,7 +103,14 @@ class AccessRules(TypedDict):
 # ============================================================================
 
 ComputerStatus = Literal[
-    "creating", "running", "stopping", "stopped", "starting", "deleting", "deleted", "error"
+    "creating",
+    "running",
+    "stopping",
+    "stopped",
+    "starting",
+    "deleting",
+    "deleted",
+    "error",
 ]
 
 

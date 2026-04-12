@@ -294,9 +294,7 @@ class Deployment(_BaseClient):
             )
         project_id = projects[0].get("id")
         if not project_id:
-            raise CelestoValidationError(
-                "First project missing id in response."
-            )
+            raise CelestoValidationError("First project missing id in response.")
         return project_id
 
     def _load_ignore_patterns(self, folder: Path) -> pathspec.PathSpec | None:
@@ -324,7 +322,7 @@ class Deployment(_BaseClient):
             for line in patterns:
                 # Strip inline comments: only ' #' (space followed by #) starts a comment
                 # Find the first occurrence of ' #' pattern
-                space_hash_idx = line.find(' #')
+                space_hash_idx = line.find(" #")
                 if space_hash_idx >= 0:
                     # Strip from the space before # onwards
                     line = line[:space_hash_idx]
@@ -333,7 +331,7 @@ class Deployment(_BaseClient):
                 line = line.strip()
 
                 # Skip empty lines and full-line comments (lines starting with #)
-                if not line or line.startswith('#'):
+                if not line or line.startswith("#"):
                     continue
 
                 processed_patterns.append(line)
@@ -344,7 +342,10 @@ class Deployment(_BaseClient):
             print("Continuing deployment without file filtering.", file=sys.stderr)
             return None
         except Exception as e:
-            print(f"Warning: Failed to parse .celestoignore patterns: {e}", file=sys.stderr)
+            print(
+                f"Warning: Failed to parse .celestoignore patterns: {e}",
+                file=sys.stderr,
+            )
             print("Continuing deployment without file filtering.", file=sys.stderr)
             return None
 
@@ -455,7 +456,9 @@ class Deployment(_BaseClient):
                     # Add files that aren't ignored
                     for file in files:
                         file_path = root_path / file
-                        rel_file = rel_root / file if rel_root != Path(".") else Path(file)
+                        rel_file = (
+                            rel_root / file if rel_root != Path(".") else Path(file)
+                        )
 
                         # Skip if file matches ignore patterns
                         if ignore_spec:
@@ -902,6 +905,7 @@ class CelestoSDK(_BaseConnection):
     CelestoSDK provides access to all Celesto services through a unified interface:
     - deployment: Deploy and manage AI agents
     - gatekeeper: Manage delegated access to user resources
+    - computers: Create and manage sandboxed virtual machines
 
     The client automatically reads API keys from the CELESTO_API_KEY environment
     variable if not provided explicitly. Use as a context manager for automatic

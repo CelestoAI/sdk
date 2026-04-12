@@ -282,15 +282,16 @@ def delete_computer(
             raise typer.Abort()
 
     with _get_client(api_key) as client:
-        result = client.computers.delete(computer_id)
+        client.computers.delete(computer_id)
 
     console.print(f"[dim]Computer {computer_id} is being deleted.[/dim]")
 
 
 def _resolve_org_id(api_key: str) -> str:
     """Resolve org ID from API key by calling user info endpoint."""
-    import httpx
     import os
+
+    import httpx
 
     base_url = os.environ.get("CELESTO_BASE_URL", "https://api.celesto.ai/v1")
     try:
