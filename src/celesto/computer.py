@@ -39,17 +39,19 @@ def _status_color(status: str) -> str:
     return colors.get(status, "white")
 
 
-def _format_ram(ram_mb: int) -> str:
-    if ram_mb >= 1024:
-        return f"{ram_mb / 1024:.0f} GB"
-    return f"{ram_mb} MB"
+def _format_memory(mb: int) -> str:
+    if mb >= 1024:
+        return f"{mb / 1024:.0f} GB"
+    return f"{mb} MB"
 
 
 @app.command("create")
 def create_computer(
     name: Annotated[
         Optional[str],
-        typer.Option("--name", "-n", help="Friendly name for the computer"),
+        typer.Option(
+            "--name", "-n", help="Friendly name (display only, not sent to API)"
+        ),
     ] = None,
     cpus: Annotated[
         int,
@@ -67,7 +69,7 @@ def create_computer(
     """Create a new sandboxed computer."""
     with _get_client(api_key) as client:
         console.print("Creating computer...", style="dim")
-        result = client.computers.create(vcpus=cpus, ram_mb=memory)
+        result = client.computers.create(cpus=cpus, memory=memory)
 
     cid = result["id"]
     status = result["status"]
@@ -78,7 +80,7 @@ def create_computer(
     console.print(f"  ID:     [bold]{cid}[/bold]")
     console.print(f"  Status: [{color}]{status}[/{color}]")
     console.print(f"  CPUs:   {cpus}")
-    console.print(f"  Memory: {_format_ram(memory)}")
+    console.print(f"  Memory: {_format_memory(memory)}")
     console.print()
     console.print(f"[dim]Connect with:[/dim] celesto computer ssh {cid}")
 
@@ -122,7 +124,7 @@ def list_computers(
             c["id"],
             f"[{color}]{c['status']}[/{color}]",
             str(c["vcpus"]),
-            _format_ram(c["ram_mb"]),
+            _format_memory(c["ram_mb"]),
             c.get("created_at", "")[:19],
         )
 
@@ -305,24 +307,3 @@ def delete_computer(
         client.computers.delete(computer_id)
 
     console.print(f"[dim]Computer {computer_id} is being deleted.[/dim]")
-
-
-def _resolve_org_id(api_key: str) -> str:
-    """Resolve org ID from API key by calling user info endpoint."""
-    import os
-
-    import httpx
-
-    base_url = os.environ.get("CELESTO_BASE_URL", "https://api.celesto.ai/v1")
-    try:
-        resp = httpx.get(
-            f"{base_url}/users/info",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        # Return the default org or first org
-        return data.get("default_organization_id", data.get("organization_id", ""))
-    except Exception:
-        return ""
