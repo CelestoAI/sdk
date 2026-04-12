@@ -794,7 +794,7 @@ class Computers(_BaseClient):
 
     Example:
         >>> with CelestoSDK() as client:
-        ...     computer = client.computers.create(vcpus=2, ram_mb=2048)
+        ...     computer = client.computers.create(cpus=2, memory=2048)
         ...     result = client.computers.exec(computer["id"], "uname -a")
         ...     print(result["stdout"])
         ...     client.computers.delete(computer["id"])
@@ -803,24 +803,24 @@ class Computers(_BaseClient):
     def create(
         self,
         *,
-        vcpus: int = 1,
-        ram_mb: int = 1024,
+        cpus: int = 1,
+        memory: int = 1024,
         image: str = "ubuntu-desktop-24.04",
     ) -> dict[str, Any]:
         """Create a new sandboxed computer.
 
         Args:
-            vcpus: Number of virtual CPUs (1-16).
-            ram_mb: Memory in MB (512-32768).
+            cpus: Number of virtual CPUs (1-16).
+            memory: Memory in MB (512-32768).
             image: OS image name.
 
         Returns:
-            Computer info dict with id, status, vcpus, ram_mb, etc.
+            Computer info dict with id, status, cpus, memory, etc.
         """
         return self._request(
             "POST",
             "/computers",
-            json_body={"vcpus": vcpus, "ram_mb": ram_mb, "image": image},
+            json_body={"vcpus": cpus, "ram_mb": memory, "image": image},
         )
 
     def list(self) -> dict[str, Any]:
