@@ -177,8 +177,9 @@ def ssh_to_computer(
 ):
     """Open an interactive terminal session on a computer."""
     import os
-    import select
+    import signal
     import termios
+    import threading
     import tty
 
     import websockets.sync.client
@@ -205,64 +206,73 @@ def ssh_to_computer(
     rows, cols = os.get_terminal_size()
     ws.send(json.dumps({"type": "resize", "cols": cols, "rows": rows}))
 
+    console.print("[dim]Connected. Press Ctrl+] to disconnect.[/dim]")
+
     # Switch terminal to raw mode
     stdin_fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(stdin_fd)
+    done = threading.Event()
 
-    console.print("[dim]Connected. Press Ctrl+] to disconnect.[/dim]")
+    def recv_loop():
+        """Read from WebSocket, write to stdout."""
+        try:
+            while not done.is_set():
+                try:
+                    msg = ws.recv(timeout=1)
+                except TimeoutError:
+                    continue
+                if isinstance(msg, str):
+                    os.write(sys.stdout.fileno(), msg.encode("utf-8"))
+                elif isinstance(msg, bytes):
+                    os.write(sys.stdout.fileno(), msg)
+        except (websockets.exceptions.ConnectionClosed, OSError):
+            pass
+        finally:
+            done.set()
+
+    def handle_sigwinch(*_args):
+        """Send terminal resize to guest on SIGWINCH."""
+        nonlocal rows, cols
+        try:
+            new_rows, new_cols = os.get_terminal_size()
+            if (new_rows, new_cols) != (rows, cols):
+                rows, cols = new_rows, new_cols
+                ws.send(json.dumps({"type": "resize", "cols": cols, "rows": rows}))
+        except Exception:
+            pass
 
     try:
         tty.setraw(stdin_fd)
-        ws.socket.setblocking(False)
 
-        while True:
-            # Break if socket is closed
-            if ws.socket.fileno() == -1:
+        # Handle terminal resize via signal (cleaner than polling)
+        old_sigwinch = signal.signal(signal.SIGWINCH, handle_sigwinch)
+
+        # Start receiver thread
+        receiver = threading.Thread(target=recv_loop, daemon=True)
+        receiver.start()
+
+        # Main thread: read stdin, send to WebSocket
+        while not done.is_set():
+            try:
+                data = os.read(stdin_fd, 4096)
+            except OSError:
                 break
-
-            # Check for input from stdin or websocket
+            if not data:
+                break
+            # Ctrl+] to disconnect
+            if b"\x1d" in data:
+                break
             try:
-                readable, _, _ = select.select([stdin_fd, ws.socket], [], [], 0.05)
-            except (ValueError, OSError):
-                break  # socket closed
-
-            for fd in readable:
-                if fd == stdin_fd:
-                    data = os.read(stdin_fd, 4096)
-                    if not data:
-                        return
-                    # Ctrl+] to disconnect
-                    if b"\x1d" in data:
-                        return
-                    try:
-                        ws.send(data.decode("utf-8", errors="replace"))
-                    except (websockets.exceptions.ConnectionClosed, OSError):
-                        return
-                else:
-                    try:
-                        msg = ws.recv(timeout=0)
-                        if isinstance(msg, str):
-                            os.write(sys.stdout.fileno(), msg.encode("utf-8"))
-                        elif isinstance(msg, bytes):
-                            os.write(sys.stdout.fileno(), msg)
-                    except TimeoutError:
-                        pass
-                    except (websockets.exceptions.ConnectionClosed, OSError):
-                        return
-
-            # Handle terminal resize
-            try:
-                new_rows, new_cols = os.get_terminal_size()
-                if (new_rows, new_cols) != (rows, cols):
-                    rows, cols = new_rows, new_cols
-                    ws.send(json.dumps({"type": "resize", "cols": cols, "rows": rows}))
-            except (OSError, websockets.exceptions.ConnectionClosed):
-                pass
+                ws.send(data.decode("utf-8", errors="replace"))
+            except (websockets.exceptions.ConnectionClosed, OSError):
+                break
 
     except KeyboardInterrupt:
         pass
     finally:
+        done.set()
         termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_settings)
+        signal.signal(signal.SIGWINCH, old_sigwinch)
         try:
             ws.close()
         except Exception:
