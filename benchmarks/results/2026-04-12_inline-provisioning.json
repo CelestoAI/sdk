@@ -1,0 +1,40 @@
+{
+  "label": "inline-provisioning",
+  "date": "2026-04-12",
+  "description": "Inline provisioning (no Celery), before SmolVM Rust native extension",
+  "host": "AWS c5.metal, us-east-1",
+  "changes": [
+    "Inline provisioning: create/stop/start call host agent synchronously",
+    "Celery as fallback only",
+    "Frontend optimistic cache update",
+    "Scientist name generation"
+  ],
+  "config": {
+    "cpus": 1,
+    "memory": 1024,
+    "runs": 3,
+    "successful_runs": 2
+  },
+  "summary": {
+    "time_to_running": { "avg": 3.202, "min": 3.171, "max": 3.233 },
+    "time_to_interact": { "avg": 3.497, "min": 3.469, "max": 3.526 },
+    "first_exec": { "avg": 0.295, "min": 0.293, "max": 0.298 },
+    "exec_avg": { "avg": 0.297, "min": 0.296, "max": 0.298 },
+    "exec_p50": { "avg": 0.296, "min": 0.295, "max": 0.297 },
+    "complex_exec": { "avg": 0.295, "min": 0.294, "max": 0.296 },
+    "create_api": { "avg": 3.202, "min": 3.171, "max": 3.233 },
+    "boot_wait": { "avg": 0.0, "min": 0.0, "max": 0.0 },
+    "delete_api": { "avg": 0.272, "min": 0.250, "max": 0.295 }
+  },
+  "previous": {
+    "label": "celery-async",
+    "time_to_interact": { "avg": 4.953 },
+    "exec_avg": { "avg": 0.434 },
+    "boot_wait": { "avg": 4.107 }
+  },
+  "improvement": {
+    "time_to_interact": "-29% (4.95s → 3.50s)",
+    "boot_wait": "-100% (4.1s → 0s, eliminated Celery overhead)",
+    "exec_latency": "-32% (434ms → 297ms)"
+  }
+}

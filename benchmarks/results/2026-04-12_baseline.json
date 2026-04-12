@@ -1,0 +1,28 @@
+{
+  "label": "baseline",
+  "date": "2026-04-12",
+  "description": "Initial benchmark — Celery async provisioning, SmolVM subprocess networking",
+  "host": "AWS c5.metal, us-east-1",
+  "changes": [
+    "Celery task for provisioning (async)",
+    "SmolVM subprocess-based networking (ip, nft, sysctl)",
+    "3s frontend polling interval"
+  ],
+  "config": {
+    "cpus": 1,
+    "memory": 1024,
+    "runs": 3,
+    "successful_runs": 3
+  },
+  "summary": {
+    "time_to_running": { "avg": 4.524, "min": 3.991, "max": 4.792 },
+    "time_to_interact": { "avg": 4.953, "min": 4.402, "max": 5.266 },
+    "first_exec": { "avg": 0.430, "min": 0.404, "max": 0.474 },
+    "exec_avg": { "avg": 0.434, "min": 0.403, "max": 0.476 },
+    "exec_p50": { "avg": 0.407, "min": 0.406, "max": 0.409 },
+    "complex_exec": { "avg": 0.397, "min": 0.389, "max": 0.408 },
+    "create_api": { "avg": 0.417, "min": 0.394, "max": 0.459 },
+    "boot_wait": { "avg": 4.107, "min": 3.593, "max": 4.394 },
+    "delete_api": { "avg": 0.383, "min": 0.364, "max": 0.411 }
+  }
+}
