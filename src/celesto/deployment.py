@@ -32,11 +32,10 @@ def _get_api_key(
     ignore_env_file: Optional[bool] = False,
     secret_name: Optional[str] = None,
 ) -> str:
-    """Get API key from argument or environment variable."""
-    if not ignore_env_file:
-        final_api_key = api_key or _get_secrets_from_env_file(secret_name=secret_name)
-    else:
-        final_api_key = api_key
+    """Get API key from argument, env var, or .env file."""
+    final_api_key = api_key or os.environ.get(secret_name or "CELESTO_API_KEY")
+    if not final_api_key and not ignore_env_file:
+        final_api_key = _get_secrets_from_env_file(secret_name=secret_name)
     if not final_api_key:
         console.print("❌ [bold red]Error:[/bold red] API key not found.")
         console.print(
