@@ -125,6 +125,7 @@ class ComputerInfo(TypedDict):
     """Information about a computer."""
 
     id: str
+    name: str
     status: ComputerStatus
     vcpus: int
     ram_mb: int

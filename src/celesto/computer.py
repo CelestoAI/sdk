@@ -71,18 +71,18 @@ def create_computer(
         console.print("Creating computer...", style="dim")
         result = client.computers.create(cpus=cpus, memory=memory)
 
+    cname = result.get("name", "")
     cid = result["id"]
     status = result["status"]
     color = _status_color(status)
 
-    if name:
-        console.print(f"  Name:   {name}")
-    console.print(f"  ID:     [bold]{cid}[/bold]")
+    console.print(f"  Name:   [bold]{cname}[/bold]")
+    console.print(f"  ID:     [dim]{cid}[/dim]")
     console.print(f"  Status: [{color}]{status}[/{color}]")
     console.print(f"  CPUs:   {cpus}")
     console.print(f"  Memory: {_format_memory(memory)}")
     console.print()
-    console.print(f"[dim]Connect with:[/dim] celesto computer ssh {cid}")
+    console.print(f"[dim]Connect with:[/dim] celesto computer ssh {cname}")
 
 
 @app.command("list")
@@ -112,7 +112,8 @@ def list_computers(
         return
 
     table = Table(show_header=True, header_style="bold")
-    table.add_column("ID", style="bold")
+    table.add_column("Name", style="bold")
+    table.add_column("ID", style="dim")
     table.add_column("Status")
     table.add_column("CPUs", justify="right")
     table.add_column("Memory", justify="right")
@@ -121,6 +122,7 @@ def list_computers(
     for c in computers:
         color = _status_color(c["status"])
         table.add_row(
+            c.get("name", ""),
             c["id"],
             f"[{color}]{c['status']}[/{color}]",
             str(c["vcpus"]),
