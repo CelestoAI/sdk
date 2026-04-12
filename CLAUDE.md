@@ -433,6 +433,21 @@ This is a v0.x SDK, so:
 - `PUT /gatekeeper/connections/access-rules` - Update access rules by subject
 - `DELETE /gatekeeper/connections/{id}/access-rules` - Clear access rules
 
+## Computer SSH / Terminal WebSocket
+
+**File:** [src/celesto/computer.py](src/celesto/computer.py) — `ssh_to_computer` command
+
+The `celesto computer ssh` command opens an interactive terminal via a WebSocket chain:
+```
+SDK (websockets) → Backend (wss://api.celesto.ai) → Host Agent → Guest Agent (PTY)
+```
+
+Key rules:
+
+- **Always use the resolved computer ID for WebSocket URLs, not the user-provided name.** The backend REST API resolves names to IDs, but WebSocket endpoints do NOT. Resolve via `client.computers.get(name)` first, then use `info["id"]` in the WS URL.
+- **Pass `Authorization: Bearer` header on the WebSocket handshake.** The backend authenticates WS connections via headers, not just the first-message token pattern. Always include `additional_headers={"Authorization": f"Bearer {key}"}` in `websockets.sync.client.connect()`.
+- **Surface WebSocket close codes.** Don't silently catch `ConnectionClosed` — display the close code/reason to the user for non-normal closures. This is critical for debugging backend/host/guest failures.
+
 ## Troubleshooting
 
 ### Common Issues
