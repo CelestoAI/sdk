@@ -61,6 +61,7 @@ class _BaseConnection:
         self.api_key = resolved_api_key
         self.session = httpx.Client(
             headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
         )
 
     def __enter__(self) -> "CelestoSDK":

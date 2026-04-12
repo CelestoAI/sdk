@@ -204,11 +204,12 @@ def ssh_to_computer(
     # Check if computer is stopped and auto-resume
     with _get_client(api_key) as client:
         info = client.computers.get(computer_id)
+        resolved_id = info.get("id", computer_id)
         if info.get("status") == "stopped":
             console.print(f"[yellow]Computer is stopped. Resuming...[/yellow]")
-            client.computers.start(computer_id)
+            client.computers.start(resolved_id)
             for _ in range(30):
-                info = client.computers.get(computer_id)
+                info = client.computers.get(resolved_id)
                 if info.get("status") == "running":
                     break
                 time.sleep(1)
@@ -219,12 +220,15 @@ def ssh_to_computer(
 
     base_url = os.environ.get("CELESTO_BASE_URL", "https://api.celesto.ai/v1")
     ws_url = base_url.replace("https://", "wss://").replace("http://", "ws://")
-    ws_url = f"{ws_url}/computers/{computer_id}/terminal"
+    ws_url = f"{ws_url}/computers/{resolved_id}/terminal"
 
     console.print(f"[dim]Connecting to {computer_id}...[/dim]")
 
     try:
-        ws = websockets.sync.client.connect(ws_url)
+        ws = websockets.sync.client.connect(
+            ws_url,
+            additional_headers={"Authorization": f"Bearer {key}"},
+        )
     except Exception as e:
         console.print(f"[red]Connection failed:[/red] {e}")
         raise typer.Exit(1)
@@ -251,7 +255,10 @@ def ssh_to_computer(
                     os.write(sys.stdout.fileno(), msg.encode("utf-8"))
                 elif isinstance(msg, bytes):
                     os.write(sys.stdout.fileno(), msg)
-        except (websockets.exceptions.ConnectionClosed, OSError):
+        except websockets.exceptions.ConnectionClosed as e:
+            if e.rcvd and e.rcvd.code != 1000:
+                console.print(f"\n[red]Connection closed: code={e.rcvd.code} reason={e.rcvd.reason}[/red]")
+        except OSError:
             pass
         finally:
             done.set()
