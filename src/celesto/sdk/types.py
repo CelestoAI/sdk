@@ -99,6 +99,51 @@ class AccessRules(TypedDict):
 
 
 # ============================================================================
+# Computer Types
+# ============================================================================
+
+ComputerStatus = Literal[
+    "creating", "running", "stopping", "stopped", "starting", "deleting", "deleted", "error"
+]
+
+
+class ComputerConnectionInfo(TypedDict):
+    """Connection details for a running computer."""
+
+    ssh: NotRequired[str]
+    access_url: NotRequired[str]
+
+
+class ComputerInfo(TypedDict):
+    """Information about a computer."""
+
+    id: str
+    status: ComputerStatus
+    vcpus: int
+    ram_mb: int
+    image: str
+    connection: NotRequired[ComputerConnectionInfo]
+    last_error: NotRequired[str]
+    created_at: str
+    stopped_at: NotRequired[str]
+
+
+class ComputerListResponse(TypedDict):
+    """Response from list computers."""
+
+    computers: List[ComputerInfo]
+    count: int
+
+
+class ComputerExecResponse(TypedDict):
+    """Response from executing a command."""
+
+    exit_code: int
+    stdout: str
+    stderr: str
+
+
+# ============================================================================
 # Export all types
 # ============================================================================
 
@@ -114,4 +159,10 @@ __all__ = [
     "DriveFile",
     "DriveFilesResponse",
     "AccessRules",
+    # Computer
+    "ComputerStatus",
+    "ComputerConnectionInfo",
+    "ComputerInfo",
+    "ComputerListResponse",
+    "ComputerExecResponse",
 ]

@@ -783,6 +783,119 @@ class GateKeeper(_BaseClient):
         )
 
 
+class Computers(_BaseClient):
+    """Client for managing sandboxed computers (AI sandboxes).
+
+    Provides methods to create, list, execute commands on, and manage
+    virtual machine sandboxes for AI agents and development.
+
+    Example:
+        >>> with CelestoSDK() as client:
+        ...     computer = client.computers.create(vcpus=2, ram_mb=2048)
+        ...     result = client.computers.exec(computer["id"], "uname -a")
+        ...     print(result["stdout"])
+        ...     client.computers.delete(computer["id"])
+    """
+
+    def create(
+        self,
+        *,
+        vcpus: int = 1,
+        ram_mb: int = 1024,
+        image: str = "ubuntu-desktop-24.04",
+    ) -> dict[str, Any]:
+        """Create a new sandboxed computer.
+
+        Args:
+            vcpus: Number of virtual CPUs (1-16).
+            ram_mb: Memory in MB (512-32768).
+            image: OS image name.
+
+        Returns:
+            Computer info dict with id, status, vcpus, ram_mb, etc.
+        """
+        return self._request(
+            "POST",
+            "/computers",
+            json_body={"vcpus": vcpus, "ram_mb": ram_mb, "image": image},
+        )
+
+    def list(self) -> dict[str, Any]:
+        """List all computers in the current organization.
+
+        Returns:
+            Dict with "computers" list and "count".
+        """
+        return self._request("GET", "/computers")
+
+    def get(self, computer_id: str) -> dict[str, Any]:
+        """Get details of a specific computer.
+
+        Args:
+            computer_id: Computer ID (e.g., "cmp_xxx").
+
+        Returns:
+            Computer info dict.
+        """
+        return self._request("GET", f"/computers/{computer_id}")
+
+    def exec(
+        self,
+        computer_id: str,
+        command: str,
+        *,
+        timeout: int = 30,
+    ) -> dict[str, Any]:
+        """Execute a command on a running computer.
+
+        Args:
+            computer_id: Computer ID.
+            command: Shell command to execute.
+            timeout: Timeout in seconds (1-300).
+
+        Returns:
+            Dict with exit_code, stdout, stderr.
+        """
+        return self._request(
+            "POST",
+            f"/computers/{computer_id}/exec",
+            json_body={"command": command, "timeout": timeout},
+        )
+
+    def stop(self, computer_id: str) -> dict[str, Any]:
+        """Stop a running computer.
+
+        Args:
+            computer_id: Computer ID.
+
+        Returns:
+            Updated computer info.
+        """
+        return self._request("POST", f"/computers/{computer_id}/stop")
+
+    def start(self, computer_id: str) -> dict[str, Any]:
+        """Start a stopped computer.
+
+        Args:
+            computer_id: Computer ID.
+
+        Returns:
+            Updated computer info.
+        """
+        return self._request("POST", f"/computers/{computer_id}/start")
+
+    def delete(self, computer_id: str) -> dict[str, Any]:
+        """Delete a computer.
+
+        Args:
+            computer_id: Computer ID.
+
+        Returns:
+            Updated computer info.
+        """
+        return self._request("DELETE", f"/computers/{computer_id}")
+
+
 class CelestoSDK(_BaseConnection):
     """Main client for the Celesto AI platform.
 
@@ -825,3 +938,4 @@ class CelestoSDK(_BaseConnection):
         super().__init__(api_key, base_url)
         self.deployment = Deployment(self)
         self.gatekeeper = GateKeeper(self)
+        self.computers = Computers(self)

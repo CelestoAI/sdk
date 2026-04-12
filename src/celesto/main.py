@@ -3,11 +3,12 @@ from __future__ import annotations
 import typer
 from rich import print
 
-from . import a2a, deployment, proxy
+from . import a2a, computer, deployment, proxy
 
 app = typer.Typer()
 app.add_typer(proxy.app)
 app.add_typer(a2a.app, name="a2a")
+app.add_typer(computer.app, name="computer")
 
 # Add deployment commands at top level
 app.command("deploy")(deployment.deploy)

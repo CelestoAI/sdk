@@ -10,6 +10,11 @@ from .exceptions import (
 )
 from .types import (
     AccessRules,
+    ComputerConnectionInfo,
+    ComputerExecResponse,
+    ComputerInfo,
+    ComputerListResponse,
+    ComputerStatus,
     ConnectionInfo,
     ConnectionListResponse,
     ConnectionResponse,
@@ -41,4 +46,9 @@ __all__ = [
     "DriveFile",
     "DriveFilesResponse",
     "AccessRules",
+    "ComputerStatus",
+    "ComputerConnectionInfo",
+    "ComputerInfo",
+    "ComputerListResponse",
+    "ComputerExecResponse",
 ]
