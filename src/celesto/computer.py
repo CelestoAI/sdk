@@ -257,7 +257,20 @@ def ssh_to_computer(
                     os.write(sys.stdout.fileno(), msg)
         except websockets.exceptions.ConnectionClosed as e:
             if e.rcvd and e.rcvd.code != 1000:
-                console.print(f"\n[red]Connection closed: code={e.rcvd.code} reason={e.rcvd.reason}[/red]")
+                console.print(f"\n[red]Connection lost (code={e.rcvd.code}).[/red]")
+                # Check if computer entered error state (e.g. host spot-interrupted)
+                try:
+                    with _get_client(api_key) as check_client:
+                        info = check_client.computers.get(resolved_id)
+                        comp_status = info.get("status")
+                        if comp_status == "error":
+                            last_err = info.get("last_error", "unknown")
+                            console.print(f"[red]Computer error: {last_err}[/red]")
+                            console.print("[dim]Create a new computer with: celesto computer create[/dim]")
+                        elif comp_status == "running":
+                            console.print(f"[yellow]Computer is still running. Reconnect with: celesto computer ssh {computer_id}[/yellow]")
+                except Exception:
+                    pass
         except OSError:
             pass
         finally:
