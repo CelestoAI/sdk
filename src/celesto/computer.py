@@ -13,6 +13,7 @@ from typing_extensions import Annotated
 
 from .deployment import _get_api_key
 from .sdk.client import CelestoSDK
+from .sdk.exceptions import CelestoAuthenticationError, CelestoNetworkError, CelestoNotFoundError
 
 app = typer.Typer(help="Create, manage, and connect to sandboxed computers.")
 console = Console()
@@ -269,8 +270,21 @@ def ssh_to_computer(
                             console.print("[dim]Create a new computer with: celesto computer create[/dim]")
                         elif comp_status == "running":
                             console.print(f"[yellow]Computer is still running. Reconnect with: celesto computer ssh {computer_id}[/yellow]")
-                except Exception:
-                    pass
+                        elif comp_status in ("stopped", "stopping"):
+                            console.print(f"[yellow]Computer is {comp_status}. Start it with: celesto computer start {computer_id}[/yellow]")
+                        elif comp_status in ("deleted", "deleting"):
+                            console.print("[red]Computer has been deleted.[/red]")
+                            console.print("[dim]Create a new computer with: celesto computer create[/dim]")
+                        elif comp_status in ("creating", "starting"):
+                            console.print(f"[yellow]Computer is {comp_status}. Wait a moment and retry: celesto computer ssh {computer_id}[/yellow]")
+                        else:
+                            console.print(f"[yellow]Computer status: {comp_status}[/yellow]")
+                except (CelestoNotFoundError,):
+                    console.print("[red]Computer not found — it may have been deleted.[/red]")
+                except (CelestoAuthenticationError, CelestoNetworkError) as exc:
+                    console.print(f"[dim]Could not check computer status: {exc}[/dim]")
+                except Exception as exc:
+                    console.print(f"[dim]Could not check computer status: {exc}[/dim]")
         except OSError:
             pass
         finally:
