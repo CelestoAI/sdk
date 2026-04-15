@@ -199,3 +199,7 @@ credentials*.json
 .zendata/
 .idea/
 *.skills/
+
+# Node / JS SDK (js/)
+node_modules/
+*.tsbuildinfo

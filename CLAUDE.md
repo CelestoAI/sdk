@@ -9,9 +9,12 @@ This document provides guidance for AI assistants working on the Celesto SDK cod
 - Manage delegated access to user resources (Google Drive, etc.) via GateKeeper
 - Interact with the platform through both programmatic SDK and command-line interfaces
 
-**Current Version:** 0.0.2
+This repository also hosts the **`@celestoai/sdk`** JavaScript/TypeScript SDK under [js/](js/). It is an independent package (Gatekeeper-only today, Node 18+, tsup build) with its own release pipeline to npm. The Python and JS packages share this repo but are otherwise decoupled — no shared tooling, no workspace, no cross-imports.
+
+**Current Version:** 0.0.2 (Python) · 0.1.0 (JS, `@celestoai/sdk`)
 **License:** Apache 2.0
 **Python:** 3.10+
+**Node:** 18+
 **API Base:** `https://api.celesto.ai/v1`
 
 ## Repository Structure
@@ -29,14 +32,34 @@ celesto-sdk/
 │   ├── a2a.py             # CLI agent-to-agent commands
 │   ├── proxy.py           # CLI MCP proxy helper
 │   └── __init__.py        # Package version and exports
-├── tests/                 # Test suite
+├── tests/                 # Python test suite
 │   ├── test_sdk.py        # SDK unit tests
 │   └── test_deployment.py # Deployment tests
-├── pyproject.toml         # Project metadata, dependencies, tooling config
-├── README.md              # User-facing documentation
+├── js/                    # @celestoai/sdk — JavaScript/TypeScript SDK
+│   ├── src/
+│   │   ├── core/          # config, errors, http (shared HTTP client)
+│   │   ├── gatekeeper/    # GatekeeperClient and types
+│   │   └── index.ts       # package entry
+│   ├── package.json       # npm package manifest (@celestoai/sdk)
+│   ├── tsconfig.json      # strict TS config
+│   ├── tsup.config.ts     # ESM + CJS + DTS bundler config
+│   └── test.mjs           # smoke test against a live API key
+├── pyproject.toml         # Python project metadata, dependencies, tooling config
+├── README.md              # User-facing documentation (Python-focused)
 ├── AGENTS.md              # GitHub Copilot instructions
 └── LICENSE                # Apache 2.0 license
 ```
+
+### JS SDK notes
+
+- Location: [js/](js/)
+- Package name: `@celestoai/sdk` (published to npm with public access)
+- Scope: **Gatekeeper only** today — not feature-parity with the Python SDK
+- Build: `cd js && npm install && npm run build` (tsup → ESM + CJS + DTS under `js/dist/`)
+- Lint / typecheck: `cd js && npm run lint` (runs `tsc --noEmit`)
+- Smoke test: `cd js && node test.mjs` (requires `CELESTO_API_KEY` and hits the live API)
+- No workspace plumbing, no `package.json` at the repo root — treat `js/` as a self-contained project.
+- Publish process is manual and independent from the Python release: bump `js/package.json` version, `npm run build`, `npm publish` from inside `js/`.
 
 ## Architecture
 

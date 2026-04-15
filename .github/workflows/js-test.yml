@@ -1,0 +1,39 @@
+name: JS Tests
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "js/**"
+      - ".github/workflows/js-test.yml"
+  pull_request:
+    paths:
+      - "js/**"
+      - ".github/workflows/js-test.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: js
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: js/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (tsc --noEmit)
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
