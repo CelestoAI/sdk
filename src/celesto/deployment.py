@@ -10,7 +10,7 @@ from dotenv.main import DotEnv
 from rich.console import Console
 from typing_extensions import Annotated
 
-from .sdk.client import CelestoSDK
+from .sdk.client import Celesto
 
 console = Console()
 
@@ -156,7 +156,7 @@ def deploy(
             f"🚀 [bold cyan]Deploying[/bold cyan] '{name}' from {folder_path}..."
         )
 
-        client = CelestoSDK(final_api_key)
+        client = Celesto(final_api_key)
         result = client.deployment.deploy(
             folder=folder_path,
             name=name,
@@ -207,7 +207,7 @@ def list_deployments(
 
     # List deployments
     try:
-        client = CelestoSDK(final_api_key)
+        client = Celesto(final_api_key)
         deployments = client.deployment.list()
 
         if not deployments:

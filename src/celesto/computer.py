@@ -12,7 +12,7 @@ from rich.table import Table
 from typing_extensions import Annotated
 
 from .deployment import _get_api_key
-from .sdk.client import CelestoSDK
+from .sdk.client import Celesto
 
 app = typer.Typer(help="Create, manage, and connect to sandboxed computers.")
 console = Console()
@@ -28,10 +28,10 @@ JsonOption = Annotated[
 ]
 
 
-def _get_client(api_key: str | None = None) -> CelestoSDK:
+def _get_client(api_key: str | None = None) -> Celesto:
     """Create SDK client with resolved API key."""
     key = _get_api_key(api_key)
-    return CelestoSDK(api_key=key)
+    return Celesto(api_key=key)
 
 
 def _status_color(status: str) -> str:

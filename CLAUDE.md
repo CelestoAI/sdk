@@ -23,7 +23,7 @@ This repository also hosts the **`@celestoai/sdk`** JavaScript/TypeScript SDK un
 celesto-sdk/
 ├── src/celesto/           # Main package
 │   ├── sdk/               # SDK implementation
-│   │   ├── client.py      # Core SDK classes: CelestoSDK, Deployment, GateKeeper
+│   │   ├── client.py      # Core SDK classes: Celesto, Deployment, GateKeeper
 │   │   ├── exceptions.py  # Custom exception hierarchy
 │   │   ├── types.py       # Type definitions
 │   │   └── __init__.py    # SDK public API exports
@@ -66,7 +66,7 @@ celesto-sdk/
 ### Three-Layer Design
 
 1. **SDK Layer** ([src/celesto/sdk/client.py](src/celesto/sdk/client.py))
-   - `CelestoSDK`: Main client class with context manager support
+   - `Celesto`: Main client class with context manager support
    - `Deployment`: Agent deployment operations
    - `GateKeeper`: Delegated access management
    - `_BaseConnection`: HTTP session and authentication management
@@ -83,14 +83,14 @@ celesto-sdk/
 
 ## Key Components
 
-### 1. CelestoSDK Client
+### 1. Celesto Client
 
 **File:** [src/celesto/sdk/client.py](src/celesto/sdk/client.py)
 
 The main SDK client provides a unified interface to all Celesto services:
 
 ```python
-with CelestoSDK() as client:
+with Celesto() as client:
     # Deployment operations
     client.deployment.deploy(...)
     client.deployment.list()
@@ -263,7 +263,7 @@ For deployment operations:
 Always support context manager protocol:
 
 ```python
-class CelestoSDK(_BaseConnection):
+class Celesto(_BaseConnection):
     def __enter__(self):
         return self
 
@@ -297,7 +297,7 @@ class CelestoSDK(_BaseConnection):
 The API base URL is configurable:
 - Default: `https://api.celesto.ai/v1`
 - Override: `CELESTO_BASE_URL` environment variable
-- Constructor: `CelestoSDK(base_url="...")`
+- Constructor: `Celesto(base_url="...")`
 
 When adding new endpoints:
 - Use relative paths (e.g., `/deploy/apps`, not full URL)
@@ -477,7 +477,7 @@ Key rules:
 
 **"API key not found"**
 - Set `CELESTO_API_KEY` environment variable
-- Or pass `api_key=` parameter to `CelestoSDK()`
+- Or pass `api_key=` parameter to `Celesto()`
 - Get key from https://celesto.ai → Settings → Security
 
 **"Project not found"**

@@ -37,13 +37,13 @@ class _BaseConnection:
 
     Example:
         # Explicit API key
-        client = CelestoSDK(api_key="your-api-key")
+        client = Celesto(api_key="your-api-key")
 
         # From environment variable
-        client = CelestoSDK()
+        client = Celesto()
 
         # With context manager for automatic cleanup
-        with CelestoSDK() as client:
+        with Celesto() as client:
             deployments = client.deployment.list()
     """
 
@@ -64,7 +64,7 @@ class _BaseConnection:
             timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
         )
 
-    def __enter__(self) -> "CelestoSDK":
+    def __enter__(self) -> "Celesto":
         """Enter context manager."""
         return self  # type: ignore[return-value]
 
@@ -237,7 +237,7 @@ class Deployment(_BaseClient):
     applications.
 
     Example:
-        client = CelestoSDK()
+        client = Celesto()
 
         # Deploy an agent
         result = client.deployment.deploy(
@@ -508,7 +508,7 @@ class GateKeeper(_BaseClient):
         4. List files with list_drive_files()
 
     Example:
-        client = CelestoSDK()
+        client = Celesto()
 
         # Initiate connection for a user
         result = client.gatekeeper.connect(
@@ -794,7 +794,7 @@ class Computers(_BaseClient):
     virtual machine sandboxes for AI agents and development.
 
     Example:
-        >>> with CelestoSDK() as client:
+        >>> with Celesto() as client:
         ...     computer = client.computers.create(cpus=2, memory=2048)
         ...     result = client.computers.exec(computer["id"], "uname -a")
         ...     print(result["stdout"])
@@ -900,10 +900,10 @@ class Computers(_BaseClient):
         return self._request("DELETE", f"/computers/{computer_id}")
 
 
-class CelestoSDK(_BaseConnection):
+class Celesto(_BaseConnection):
     """Main client for the Celesto AI platform.
 
-    CelestoSDK provides access to all Celesto services through a unified interface:
+    Celesto provides access to all Celesto services through a unified interface:
     - deployment: Deploy and manage AI agents
     - gatekeeper: Manage delegated access to user resources
     - computers: Create and manage sandboxed virtual machines
@@ -925,7 +925,7 @@ class CelestoSDK(_BaseConnection):
         import os
         os.environ["CELESTO_API_KEY"] = "your-api-key"
 
-        with CelestoSDK() as client:
+        with Celesto() as client:
             # Deploy an agent
             result = client.deployment.deploy(
                 folder=Path("./my-app"),

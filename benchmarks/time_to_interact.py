@@ -21,7 +21,7 @@ import statistics
 import sys
 import time
 
-from celesto.sdk import CelestoSDK
+from celesto.sdk import Celesto
 
 
 def measure(fn, label: str = "") -> tuple[float, any]:
@@ -32,7 +32,7 @@ def measure(fn, label: str = "") -> tuple[float, any]:
     return elapsed, result
 
 
-def wait_for_status(client: CelestoSDK, computer_id: str, target: str, timeout: float = 120) -> float:
+def wait_for_status(client: Celesto, computer_id: str, target: str, timeout: float = 120) -> float:
     """Poll until computer reaches target status. Returns wait time."""
     start = time.perf_counter()
     while time.perf_counter() - start < timeout:
@@ -43,7 +43,7 @@ def wait_for_status(client: CelestoSDK, computer_id: str, target: str, timeout: 
     raise TimeoutError(f"Computer {computer_id} did not reach {target} in {timeout}s (status: {info['status']})")
 
 
-def run_benchmark(client: CelestoSDK, cpus: int, memory: int, run_index: int, verbose: bool = True) -> dict:
+def run_benchmark(client: Celesto, cpus: int, memory: int, run_index: int, verbose: bool = True) -> dict:
     """Run a single benchmark iteration."""
     results = {}
 
@@ -137,7 +137,7 @@ def main():
         print(f"  CPUs:   {args.cpus}")
         print(f"  Memory: {args.memory} MB")
 
-    with CelestoSDK(api_key=args.api_key) as client:
+    with Celesto(api_key=args.api_key) as client:
         all_results = []
         for i in range(args.runs):
             try:

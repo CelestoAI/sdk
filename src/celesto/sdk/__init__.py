@@ -1,4 +1,4 @@
-from .client import CelestoSDK
+from .client import Celesto
 from .exceptions import (
     CelestoAuthenticationError,
     CelestoError,
@@ -27,7 +27,7 @@ from .types import (
 
 __all__ = [
     # Main client
-    "CelestoSDK",
+    "Celesto",
     # Exceptions
     "CelestoError",
     "CelestoAuthenticationError",

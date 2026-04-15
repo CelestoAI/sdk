@@ -13,9 +13,9 @@ pip install celesto
 ## Quick Start
 
 ```python
-from celesto.sdk import CelestoSDK
+from celesto import Celesto
 
-with CelestoSDK() as client:
+with Celesto() as client:
     computer = client.computers.create(cpus=2, memory=2048)
     print(f"Computer ready: {computer['name']}")
 
@@ -62,7 +62,7 @@ export CELESTO_API_KEY="your-api-key"
 Or pass it directly:
 
 ```python
-client = CelestoSDK(api_key="your-api-key")
+client = Celesto(api_key="your-api-key")
 ```
 
 ## Computers API

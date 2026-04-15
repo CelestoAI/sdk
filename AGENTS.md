@@ -3,7 +3,7 @@
 ## Project Overview
 
 Celesto SDK is a Python client + CLI for the Celesto AI platform. It provides:
-- A typed Python SDK (`CelestoSDK`) for Deployments and GateKeeper.
+- A typed Python SDK (`Celesto`) for Deployments and GateKeeper.
 - A CLI (`celesto`) for deployment and A2A utilities.
 
 ## Repository Structure
