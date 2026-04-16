@@ -9,7 +9,7 @@ This document provides guidance for AI assistants working on the Celesto SDK cod
 - Manage delegated access to user resources (Google Drive, etc.) via GateKeeper
 - Interact with the platform through both programmatic SDK and command-line interfaces
 
-This repository also hosts the **`@celestoai/sdk`** JavaScript/TypeScript SDK under [js/](js/). It is an independent package (Gatekeeper-only today, Node 18+, tsup build) with its own release pipeline to npm. The Python and JS packages share this repo but are otherwise decoupled — no shared tooling, no workspace, no cross-imports.
+This repository also hosts the **`@celestoai/sdk`** JavaScript/TypeScript SDK under [js/](js/). It is an independent package (Gatekeeper + Computers, Node 18+, tsup build) with its own release pipeline to npm. The Python and JS packages share this repo but are otherwise decoupled — no shared tooling, no workspace, no cross-imports.
 
 **Current Version:** 0.0.2 (Python) · 0.1.0 (JS, `@celestoai/sdk`)
 **License:** Apache 2.0
@@ -54,17 +54,18 @@ celesto-sdk/
 
 - Location: [js/](js/)
 - Package name: `@celestoai/sdk` (published to npm with public access)
-- Scope: **Gatekeeper** + **Computers**. `CelestoClient` composes both: `celesto.gatekeeper.*` and `celesto.computers.*`. Individual clients are also importable via subpath exports (`@celestoai/sdk/gatekeeper`, `@celestoai/sdk/computers`).
-- Computers parity with Python: all 7 HTTP methods (`create`, `list`, `get`, `exec`, `stop`, `start`, `delete`) plus `openTerminal()` which returns an `EventEmitter`-based `Terminal` handle. Terminal uses the `ws` package — the only runtime dependency.
+- Scope: **Gatekeeper** + **Computers**. `Celesto` composes both: `celesto.gatekeeper.*` and `celesto.computers.*`. Individual clients are also importable via subpath exports (`@celestoai/sdk/gatekeeper`, `@celestoai/sdk/computers`).
+- Computers parity with Python: all 7 HTTP methods (`create`, `list`, `get`, `exec`, `stop`, `start`, `delete`) plus `getTerminalConnection()` which returns `{ url, headers, firstMessage }` for BYO WebSocket. Zero runtime dependencies.
 - Terminal rules (mirror [src/celesto/computer.py](src/celesto/computer.py)):
-  - Always resolve name → ID via `get()` before the WebSocket handshake — the WS endpoint does not resolve names. `openTerminal()` does this internally.
-  - WebSocket handshake sends `Authorization: Bearer` header; the legacy first-message `{"token": ...}` JSON is also sent after connect for backend compat.
+  - Always resolve name → ID via `get()` before the WebSocket handshake — the WS endpoint does not resolve names. `getTerminalConnection()` does this internally.
+  - WebSocket handshake needs `Authorization: Bearer` header (returned in `headers`); the legacy first-message `{"token": ...}` JSON is returned in `firstMessage` for backend compat.
   - Resize frames are `{"type": "resize", "cols": N, "rows": N}`.
   - Does **not** auto-resume stopped computers — that's application logic, not SDK default.
 - Public API is camelCase; wire DTOs are snake_case (`vcpus`, `ram_mb`, `exit_code`, etc.) mapped in the client file. Same pattern as Gatekeeper.
+- Error hierarchy: `CelestoError` (base) → `CelestoApiError` (HTTP errors with `.status`) and `CelestoNetworkError` (DNS, timeout, offline). Network failures from `fetch()` are always wrapped — never leak raw `TypeError`.
 - Build: `cd js && npm install && npm run build` (tsup → ESM + CJS + DTS under `js/dist/`)
 - Lint / typecheck: `cd js && npm run lint` (runs `tsc --noEmit`)
-- Unit tests: `cd js && npm test`. Uses Node's built-in `node:test` runner via `tsx`. Tests live in `js/tests/`. HTTP tests mock `fetch` via `ClientConfig.fetch`; terminal tests start a real in-process `WebSocketServer` from the `ws` package on `127.0.0.1:0` to avoid mocking the library.
+- Unit tests: `cd js && npm test`. Uses Node's built-in `node:test` runner via `tsx`. Tests live in `js/tests/`. HTTP tests mock `fetch` via `ClientConfig.fetch`.
 - Smoke test (manual, needs live API key): `cd js && node test.mjs`
 - No workspace plumbing, no `package.json` at the repo root — treat `js/` as a self-contained project.
 - Publish process is manual and independent from the Python release: bump `js/package.json` version, `npm run build`, `npm publish` from inside `js/`.

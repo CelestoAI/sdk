@@ -14,9 +14,9 @@ npm install @celestoai/sdk
 ## Quickstart
 
 ```ts
-import { CelestoClient } from "@celestoai/sdk";
+import { Celesto } from "@celestoai/sdk";
 
-const celesto = new CelestoClient({
+const celesto = new Celesto({
   token: process.env.CELESTO_API_KEY,
   // organizationId: "org_123", // optional, for JWTs with multiple orgs
 });
@@ -60,29 +60,20 @@ const result = await celesto.computers.exec(computer.id, "ls -la", { timeout: 60
 console.log(result.exitCode, result.stdout, result.stderr);
 ```
 
-### Interactive terminal
+### Terminal connection
 
-`openTerminal()` returns an event-driven handle backed by a WebSocket. It accepts either a
-computer ID or a human-readable name — the name is resolved to the canonical ID before the
-WebSocket handshake. `openTerminal()` does **not** auto-resume stopped computers; call
-`start()` yourself and poll for `status === "running"` if you need that.
+`getTerminalConnection()` resolves a computer name or ID and returns everything you need
+to open a WebSocket terminal with any library of your choice. No built-in WebSocket
+dependency — bring your own.
 
 ```ts
-const terminal = await celesto.computers.openTerminal(computer.id);
+const conn = await celesto.computers.getTerminalConnection("my-computer");
 
-terminal.on("data", (chunk) => process.stdout.write(chunk));
-terminal.on("close", (code, reason) => {
-  console.log(`terminal closed: ${code} ${reason}`);
-});
-terminal.on("error", (err) => {
-  console.error(err);
-});
-
-terminal.write("ls -la\n");
-terminal.resize(120, 40);
-
-// ...later
-await terminal.close();
+// Use any WebSocket library (ws, Node 22+ built-in, etc.)
+import WebSocket from "ws";
+const ws = new WebSocket(conn.url, { headers: conn.headers });
+ws.on("open", () => ws.send(conn.firstMessage));
+ws.on("message", (data) => process.stdout.write(data));
 ```
 
 ## Gatekeeper
@@ -109,7 +100,7 @@ Full docs: https://docs.celesto.ai/celesto-sdk/gatekeeper
 
 - `token` accepts either a Celesto API key or a JWT.
 - `organizationId` adds the `X-Current-Organization` header.
-- Requires Node 18+ for built-in `fetch`. The `ws` package is used for WebSocket terminal support.
+- Requires Node 18+ for built-in `fetch`. Zero runtime dependencies.
 
 ## License
 

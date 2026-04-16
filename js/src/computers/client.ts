@@ -1,6 +1,5 @@
 import { buildRequestContext, ClientConfig, RequestOverrides } from "../core/config";
 import { request } from "../core/http";
-import { openTerminalConnection, Terminal } from "./terminal";
 import {
   ComputerConnectionInfo,
   ComputerExecResponse,
@@ -9,7 +8,7 @@ import {
   ComputerStatus,
   CreateComputerParams,
   ExecParams,
-  OpenTerminalOptions,
+  TerminalConnectionInfo,
 } from "./types";
 
 interface ComputerConnectionInfoWire {
@@ -86,12 +85,13 @@ const pickOverrides = (options?: RequestOverrides): RequestOverrides => ({
 /**
  * Client for managing sandboxed computers (AI sandboxes).
  *
- * Mirrors the Python `Computers` class: create/list/get/exec/stop/start/delete
- * over HTTP, plus `openTerminal()` for an interactive WebSocket session.
+ * Provides create/list/get/exec/stop/start/delete over HTTP, plus
+ * `getTerminalConnection()` which returns the URL and headers needed
+ * to open a WebSocket terminal with any WS library of your choice.
  *
  * @example
  * ```ts
- * const celesto = new CelestoClient({ token: process.env.CELESTO_API_KEY });
+ * const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
  * const computer = await celesto.computers.create({ cpus: 2, memory: 2048 });
  * const result = await celesto.computers.exec(computer.id, "uname -a");
  * console.log(result.stdout);
@@ -193,18 +193,45 @@ export class ComputersClient {
   }
 
   /**
-   * Open an interactive terminal session on a computer.
+   * Get connection info for opening a WebSocket terminal session.
    *
    * Accepts either a computer ID (e.g. `cmp_xxx`) or a human-readable name.
-   * The name is resolved to the canonical ID via a GET call before the
-   * WebSocket handshake — the backend's WebSocket endpoint does not resolve
-   * names on its own.
+   * The name is resolved to the canonical ID via a GET call — the backend's
+   * WebSocket endpoint does not resolve names on its own.
    *
-   * Does **not** auto-resume stopped computers. Call `start()` yourself and
-   * poll until the status is `"running"` if you need that.
+   * Returns the URL, headers, and first message needed to open the connection
+   * with any WebSocket library of your choice.
+   *
+   * @example
+   * ```ts
+   * const conn = await celesto.computers.getTerminalConnection("my-computer");
+   * const ws = new WebSocket(conn.url, { headers: conn.headers });
+   * ws.on("open", () => ws.send(conn.firstMessage));
+   * ws.on("message", (data) => process.stdout.write(data));
+   * ```
    */
-  async openTerminal(computerIdOrName: string, options?: OpenTerminalOptions): Promise<Terminal> {
+  async getTerminalConnection(computerIdOrName: string): Promise<TerminalConnectionInfo> {
     const info = await this.get(computerIdOrName);
-    return openTerminalConnection(this.config, info.id, options);
+    const ctx = buildRequestContext(this.config);
+
+    if (!ctx.token) {
+      throw new Error("A token is required for terminal connections");
+    }
+
+    const wsBase = ctx.baseUrl.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
+    const url = `${wsBase}/v1/computers/${encodeURIComponent(info.id)}/terminal`;
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${ctx.token}`,
+    };
+    if (ctx.organizationId) {
+      headers["X-Current-Organization"] = ctx.organizationId;
+    }
+
+    return {
+      url,
+      headers,
+      firstMessage: JSON.stringify({ token: ctx.token }),
+    };
   }
 }

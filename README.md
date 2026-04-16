@@ -4,28 +4,48 @@
 [![Python](https://img.shields.io/pypi/pyversions/celesto.svg)](https://pypi.org/project/celesto/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Sandboxed cloud computers for AI agents. Spin up isolated computers in seconds, run workflows/commands or long running agents -- all from Python or the CLI.
+Sandboxed cloud computers for AI agents. Spin up isolated computers in seconds, run workflows/commands or long-running agents -- all from Python, JavaScript/TypeScript, or the CLI.
 
 ```bash
-pip install celesto
+pip install celesto        # Python SDK + CLI
+npm install @celestoai/sdk # JavaScript/TypeScript SDK
 ```
 
 ## Quick Start
 
+**Python:**
+
 ```python
 from celesto import Celesto
 
-with Celesto() as client:
-    computer = client.computers.create(cpus=2, memory=2048)
-    print(f"Computer ready: {computer['name']}")
+client = Celesto()
 
-    result = client.computers.exec(computer["id"], "uname -a")
-    print(result["stdout"])
+computer = client.computers.create(cpus=2, memory=2048)
+print(f"Computer ready: {computer['name']}")
 
-    client.computers.delete(computer["id"])
+result = client.computers.exec(computer["id"], "uname -a")
+print(result["stdout"])
+
+client.computers.delete(computer["id"])
 ```
 
-Or from the command line:
+**JavaScript / TypeScript:**
+
+```ts
+import { Celesto } from "@celestoai/sdk";
+
+const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
+
+const computer = await celesto.computers.create({ cpus: 2, memory: 2048 });
+console.log(`Computer ready: ${computer.name}`);
+
+const result = await celesto.computers.exec(computer.id, "uname -a");
+console.log(result.stdout);
+
+await celesto.computers.delete(computer.id);
+```
+
+**CLI:**
 
 ```bash
 export CELESTO_API_KEY="your-api-key"
@@ -136,6 +156,7 @@ from celesto.sdk.exceptions import (
 ## Links
 
 - [Documentation](https://docs.celesto.ai/celesto-sdk)
+- [JS/TS SDK docs](js/README.md)
 - [Platform](https://celesto.ai)
 - [GitHub](https://github.com/CelestoAI/sdk)
 
