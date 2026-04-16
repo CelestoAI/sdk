@@ -9,7 +9,7 @@ This document provides guidance for AI assistants working on the Celesto SDK cod
 - Manage delegated access to user resources (Google Drive, etc.) via GateKeeper
 - Interact with the platform through both programmatic SDK and command-line interfaces
 
-This repository also hosts the **`@celestoai/sdk`** JavaScript/TypeScript SDK under [js/](js/). It is an independent package (Gatekeeper-only today, Node 18+, tsup build) with its own release pipeline to npm. The Python and JS packages share this repo but are otherwise decoupled — no shared tooling, no workspace, no cross-imports.
+This repository also hosts the **`@celestoai/sdk`** JavaScript/TypeScript SDK under [js/](js/). It is an independent package (Gatekeeper + Computers, Node 18+, tsup build) with its own release pipeline to npm. The Python and JS packages share this repo but are otherwise decoupled — no shared tooling, no workspace, no cross-imports.
 
 **Current Version:** 0.0.2 (Python) · 0.1.0 (JS, `@celestoai/sdk`)
 **License:** Apache 2.0

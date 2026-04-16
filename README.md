@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/celesto.svg)](https://pypi.org/project/celesto/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Sandboxed cloud computers for AI agents. Spin up isolated computers in seconds, run workflows/commands or long running agents -- all from Python, JavaScript/TypeScript, or the CLI.
+Sandboxed cloud computers for AI agents. Spin up isolated computers in seconds, run workflows/commands or long-running agents -- all from Python, JavaScript/TypeScript, or the CLI.
 
 ```bash
 pip install celesto        # Python SDK + CLI
