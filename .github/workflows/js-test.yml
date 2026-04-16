@@ -3,13 +3,7 @@ name: JS Tests
 on:
   push:
     branches: ["main"]
-    paths:
-      - "js/**"
-      - ".github/workflows/js-test.yml"
   pull_request:
-    paths:
-      - "js/**"
-      - ".github/workflows/js-test.yml"
 
 jobs:
   test:
