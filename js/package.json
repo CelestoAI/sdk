@@ -1,7 +1,7 @@
 {
   "name": "@celestoai/sdk",
-  "version": "0.1.0",
-  "description": "Celesto SDK (Gatekeeper client)",
+  "version": "0.2.0",
+  "description": "Celesto SDK — Gatekeeper and Computers clients for Node.js",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -17,6 +17,11 @@
       "types": "./dist/gatekeeper/index.d.ts",
       "import": "./dist/gatekeeper/index.js",
       "require": "./dist/gatekeeper/index.cjs"
+    },
+    "./computers": {
+      "types": "./dist/computers/index.d.ts",
+      "import": "./dist/computers/index.js",
+      "require": "./dist/computers/index.cjs"
     }
   },
   "files": [
@@ -32,10 +37,17 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "lint": "tsc -p tsconfig.json --noEmit"
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test tests/computers.test.ts tests/terminal.test.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.12",
     "tsup": "^8.0.2",
+    "tsx": "^4.19.0",
     "typescript": "^5.5.4"
   }
 }
