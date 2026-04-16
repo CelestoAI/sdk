@@ -2,8 +2,8 @@
 
 Node-only TypeScript SDK for the [Celesto](https://celesto.ai) platform. Covers:
 
-- **Gatekeeper** (`/v1/gatekeeper`) — delegated access to user resources
 - **Computers** (`/v1/computers`) — create, manage, and interact with sandboxed virtual machines
+- **Gatekeeper** (`/v1/gatekeeper`) — delegated access to user resources
 
 ## Install
 
@@ -19,13 +19,6 @@ import { Celesto } from "@celestoai/sdk";
 const celesto = new Celesto({
   token: process.env.CELESTO_API_KEY,
   // organizationId: "org_123", // optional, for JWTs with multiple orgs
-});
-
-// Gatekeeper
-const connect = await celesto.gatekeeper.connect({
-  subject: "customer_123",
-  provider: "google_drive",
-  projectName: "Default",
 });
 
 // Computers

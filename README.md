@@ -1,6 +1,7 @@
 # Celesto
 
 [![PyPI version](https://badge.fury.io/py/celesto.svg)](https://pypi.org/project/celesto/)
+[![npm version](https://img.shields.io/npm/v/@celestoai/sdk.svg)](https://www.npmjs.com/package/@celestoai/sdk)
 [![Python](https://img.shields.io/pypi/pyversions/celesto.svg)](https://pypi.org/project/celesto/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
