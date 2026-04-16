@@ -18,14 +18,15 @@ npm install @celestoai/sdk # JavaScript/TypeScript SDK
 ```python
 from celesto import Celesto
 
-with Celesto() as client:
-    computer = client.computers.create(cpus=2, memory=2048)
-    print(f"Computer ready: {computer['name']}")
+client = Celesto()
 
-    result = client.computers.exec(computer["id"], "uname -a")
-    print(result["stdout"])
+computer = client.computers.create(cpus=2, memory=2048)
+print(f"Computer ready: {computer['name']}")
 
-    client.computers.delete(computer["id"])
+result = client.computers.exec(computer["id"], "uname -a")
+print(result["stdout"])
+
+client.computers.delete(computer["id"])
 ```
 
 **JavaScript / TypeScript:**
