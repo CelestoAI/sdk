@@ -18,7 +18,7 @@ export type {
   GatekeeperRevokeParams,
   GatekeeperRevokeResponse,
 } from "./gatekeeper";
-export { ComputersClient, Terminal } from "./computers";
+export { ComputersClient } from "./computers";
 export type {
   ComputerConnectionInfo,
   ComputerExecResponse,
@@ -27,10 +27,10 @@ export type {
   ComputerStatus,
   CreateComputerParams,
   ExecParams,
-  OpenTerminalOptions,
+  TerminalConnectionInfo,
 } from "./computers";
 export type { ClientConfig, RequestOverrides } from "./core/config";
-export { CelestoApiError } from "./core/errors";
+export { CelestoError, CelestoApiError, CelestoNetworkError } from "./core/errors";
 
 export class Celesto {
   readonly gatekeeper: GatekeeperClient;

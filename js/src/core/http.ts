@@ -1,4 +1,4 @@
-import { CelestoApiError } from "./errors";
+import { CelestoApiError, CelestoNetworkError } from "./errors";
 import { RequestContext, RequestOptions } from "./config";
 
 const joinUrl = (baseUrl: string, path: string): string => {
@@ -114,6 +114,12 @@ export const request = async <T>(ctx: RequestContext, options: RequestOptions): 
     }
 
     return data as T;
+  } catch (err) {
+    if (err instanceof CelestoApiError) {
+      throw err;
+    }
+    const error = err instanceof Error ? err : new Error(String(err));
+    throw new CelestoNetworkError(error.message, error);
   } finally {
     if (timeoutId) {
       clearTimeout(timeoutId);

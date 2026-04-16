@@ -81,7 +81,7 @@ interface GatekeeperAccessRulesResponseWire {
 
 const toConnectRequest = (payload: GatekeeperConnectRequest): GatekeeperConnectRequestWire => ({
   subject: payload.subject,
-  provider: payload.provider,
+  provider: payload.provider ?? "google_drive",
   project_name: payload.projectName,
   redirect_uri: payload.redirectUri,
 });

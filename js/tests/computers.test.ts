@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { ComputersClient } from "../src/computers/client";
 import type { ClientConfig } from "../src/core/config";
-import { CelestoApiError } from "../src/core/errors";
+import { CelestoApiError, CelestoError, CelestoNetworkError } from "../src/core/errors";
 
 interface RecordedCall {
   url: string;
@@ -145,7 +145,7 @@ describe("ComputersClient", () => {
     assert.equal(result.computers[1]!.stoppedAt, "2026-04-16T01:00:00Z");
   });
 
-  it("get() hits /v1/computers/{id} and is used by openTerminal for ID resolution", async () => {
+  it("get() resolves name to ID via /v1/computers/{name}", async () => {
     const { fetch, calls } = makeFetchMock(() => ({
       status: 200,
       body: {
@@ -222,10 +222,71 @@ describe("ComputersClient", () => {
       () => client.get("cmp_missing"),
       (err: unknown) => {
         assert.ok(err instanceof CelestoApiError);
+        assert.ok(err instanceof CelestoError, "CelestoApiError should extend CelestoError");
         assert.equal(err.status, 404);
         assert.equal(err.message, "Computer not found");
         return true;
       },
+    );
+  });
+
+  it("wraps network failures in CelestoNetworkError", async () => {
+    const failingFetch: typeof fetch = async () => {
+      throw new TypeError("fetch failed");
+    };
+    const client = new ComputersClient(makeConfig(failingFetch));
+
+    await assert.rejects(
+      () => client.list(),
+      (err: unknown) => {
+        assert.ok(err instanceof CelestoNetworkError);
+        assert.ok(err instanceof CelestoError, "CelestoNetworkError should extend CelestoError");
+        assert.match(err.message, /fetch failed/);
+        return true;
+      },
+    );
+  });
+
+  it("getTerminalConnection() resolves name and returns wss:// URL with auth", async () => {
+    const { fetch } = makeFetchMock(() => ({
+      status: 200,
+      body: {
+        id: "cmp_resolved_id",
+        name: "my-computer",
+        status: "running",
+        vcpus: 1,
+        ram_mb: 1024,
+        image: "ubuntu-desktop-24.04",
+        created_at: "2026-04-16T00:00:00Z",
+      },
+    }));
+    const client = new ComputersClient(makeConfig(fetch));
+
+    const conn = await client.getTerminalConnection("my-computer");
+
+    assert.equal(conn.url, "wss://api.example.test/v1/computers/cmp_resolved_id/terminal");
+    assert.equal(conn.headers["Authorization"], "Bearer test-token");
+    assert.deepEqual(JSON.parse(conn.firstMessage), { token: "test-token" });
+  });
+
+  it("getTerminalConnection() throws when no token is configured", async () => {
+    const { fetch } = makeFetchMock(() => ({
+      status: 200,
+      body: {
+        id: "cmp_1",
+        name: "n",
+        status: "running",
+        vcpus: 1,
+        ram_mb: 1024,
+        image: "ubuntu-desktop-24.04",
+        created_at: "2026-04-16T00:00:00Z",
+      },
+    }));
+    const client = new ComputersClient({ baseUrl: "https://api.example.test", fetch });
+
+    await assert.rejects(
+      () => client.getTerminalConnection("cmp_1"),
+      /token is required/i,
     );
   });
 });

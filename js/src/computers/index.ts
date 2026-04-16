@@ -1,5 +1,4 @@
 export { ComputersClient } from "./client";
-export { Terminal, openTerminalConnection } from "./terminal";
 export type {
   ComputerConnectionInfo,
   ComputerExecResponse,
@@ -8,5 +7,5 @@ export type {
   ComputerStatus,
   CreateComputerParams,
   ExecParams,
-  OpenTerminalOptions,
+  TerminalConnectionInfo,
 } from "./types";

@@ -1,6 +1,7 @@
 export interface GatekeeperConnectRequest {
   subject: string;
-  provider: string;
+  /** Defaults to "google_drive". */
+  provider?: string;
   projectName: string;
   redirectUri?: string;
 }
