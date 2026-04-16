@@ -32,7 +32,7 @@ export type {
 export type { ClientConfig, RequestOverrides } from "./core/config";
 export { CelestoApiError } from "./core/errors";
 
-export class CelestoClient {
+export class Celesto {
   readonly gatekeeper: GatekeeperClient;
   readonly computers: ComputersClient;
 

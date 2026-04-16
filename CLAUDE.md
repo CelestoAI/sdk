@@ -54,7 +54,7 @@ celesto-sdk/
 
 - Location: [js/](js/)
 - Package name: `@celestoai/sdk` (published to npm with public access)
-- Scope: **Gatekeeper** + **Computers**. `CelestoClient` composes both: `celesto.gatekeeper.*` and `celesto.computers.*`. Individual clients are also importable via subpath exports (`@celestoai/sdk/gatekeeper`, `@celestoai/sdk/computers`).
+- Scope: **Gatekeeper** + **Computers**. `Celesto` composes both: `celesto.gatekeeper.*` and `celesto.computers.*`. Individual clients are also importable via subpath exports (`@celestoai/sdk/gatekeeper`, `@celestoai/sdk/computers`).
 - Computers parity with Python: all 7 HTTP methods (`create`, `list`, `get`, `exec`, `stop`, `start`, `delete`) plus `openTerminal()` which returns an `EventEmitter`-based `Terminal` handle. Terminal uses the `ws` package — the only runtime dependency.
 - Terminal rules (mirror [src/celesto/computer.py](src/celesto/computer.py)):
   - Always resolve name → ID via `get()` before the WebSocket handshake — the WS endpoint does not resolve names. `openTerminal()` does this internally.

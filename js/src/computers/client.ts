@@ -91,7 +91,7 @@ const pickOverrides = (options?: RequestOverrides): RequestOverrides => ({
  *
  * @example
  * ```ts
- * const celesto = new CelestoClient({ token: process.env.CELESTO_API_KEY });
+ * const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
  * const computer = await celesto.computers.create({ cpus: 2, memory: 2048 });
  * const result = await celesto.computers.exec(computer.id, "uname -a");
  * console.log(result.stdout);

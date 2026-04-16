@@ -14,9 +14,9 @@ npm install @celestoai/sdk
 ## Quickstart
 
 ```ts
-import { CelestoClient } from "@celestoai/sdk";
+import { Celesto } from "@celestoai/sdk";
 
-const celesto = new CelestoClient({
+const celesto = new Celesto({
   token: process.env.CELESTO_API_KEY,
   // organizationId: "org_123", // optional, for JWTs with multiple orgs
 });
