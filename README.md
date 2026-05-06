@@ -86,6 +86,45 @@ Or pass it directly:
 client = Celesto(api_key="your-api-key")
 ```
 
+## OpenAI Agents SDK sandboxes
+
+Celesto can act as a sandbox provider for OpenAI `SandboxAgent` workflows. The
+hosted provider runs work on Celesto computers, and the local provider runs work
+on SmolVM.
+
+```bash
+pip install "celesto[openai-agents]"        # hosted Celesto computers
+pip install "celesto[openai-agents-smolvm]" # local SmolVM sandboxes too
+```
+
+```python
+from agents import Runner
+from agents.run import RunConfig
+from agents.sandbox import SandboxAgent, SandboxRunConfig
+from celesto.integrations.openai_agents import CelestoSandboxClient, CelestoSandboxClientOptions
+
+agent = SandboxAgent(
+    name="Workspace analyst",
+    instructions="Inspect the sandbox workspace before answering.",
+)
+
+client = CelestoSandboxClient()
+session = await client.create(options=CelestoSandboxClientOptions(cpus=2, memory=2048))
+try:
+    async with session:
+        result = await Runner.run(
+            agent,
+            "Run `uname -a` in the sandbox and summarize the result.",
+            run_config=RunConfig(sandbox=SandboxRunConfig(session=session)),
+        )
+        print(result.final_output)
+finally:
+    await client.delete(session)
+```
+
+Use `SmolVMSandboxClient` and `SmolVMSandboxClientOptions` from the same module
+when you want the same `SandboxAgent` flow to run on a local SmolVM sandbox.
+
 ## Computers API
 
 ### Create
