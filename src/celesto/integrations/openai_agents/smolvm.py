@@ -65,6 +65,7 @@ class SmolVMSandboxSession(CommandBackedSession):
         self.state = state
         self._vm: Any | None = None
         self._running = False
+        self._command_lock = asyncio.Lock()
 
     @classmethod
     def from_state(cls, state: SmolVMSandboxSessionState) -> "SmolVMSandboxSession":
@@ -111,11 +112,12 @@ class SmolVMSandboxSession(CommandBackedSession):
 
     async def _run_guest(self, command: str, *, timeout: float | None = None) -> dict[str, Any]:
         vm = self._connect_or_create_vm()
-        result = await asyncio.to_thread(
-            vm.run,
-            command,
-            timeout=timeout_seconds(timeout),
-        )
+        async with self._command_lock:
+            result = await asyncio.to_thread(
+                vm.run,
+                command,
+                timeout=timeout_seconds(timeout),
+            )
         return {"exit_code": result.exit_code, "stdout": result.stdout, "stderr": result.stderr}
 
     async def _resolve_exposed_port(self, port: int) -> ExposedPortEndpoint:
@@ -138,7 +140,8 @@ class SmolVMSandboxSession(CommandBackedSession):
             tmp_path = Path(tmp.name)
         try:
             vm = self._connect_or_create_vm()
-            await asyncio.to_thread(vm.upload_file, tmp_path, workspace_path.as_posix())
+            async with self._command_lock:
+                await asyncio.to_thread(vm.upload_file, tmp_path, workspace_path.as_posix())
         finally:
             tmp_path.unlink(missing_ok=True)
 

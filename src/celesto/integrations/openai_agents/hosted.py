@@ -57,6 +57,7 @@ class CelestoSandboxSession(CommandBackedSession):
         self.state = state
         self._client = client
         self._running = False
+        self._command_lock = asyncio.Lock()
 
     @classmethod
     def from_state(
@@ -95,12 +96,13 @@ class CelestoSandboxSession(CommandBackedSession):
                 "No Celesto computer is ready yet. Start the session with "
                 "`async with session:` before running commands."
             )
-        return await asyncio.to_thread(
-            self._client.computers.exec,
-            self.state.computer_id,
-            command,
-            timeout=timeout_seconds(timeout),
-        )
+        async with self._command_lock:
+            return await asyncio.to_thread(
+                self._client.computers.exec,
+                self.state.computer_id,
+                command,
+                timeout=timeout_seconds(timeout),
+            )
 
     async def _delete_backend(self) -> None:
         if self.state.computer_id is None:
