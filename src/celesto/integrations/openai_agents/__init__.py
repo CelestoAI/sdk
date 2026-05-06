@@ -4,11 +4,13 @@ Import this module when you want OpenAI's ``SandboxAgent`` to use Celesto or
 SmolVM as its working computer.
 """
 
-from .sandbox import (
+from .hosted import (
     CelestoSandboxClient,
     CelestoSandboxClientOptions,
     CelestoSandboxSession,
     CelestoSandboxSessionState,
+)
+from .smolvm import (
     SmolVMSandboxClient,
     SmolVMSandboxClientOptions,
     SmolVMSandboxSession,
