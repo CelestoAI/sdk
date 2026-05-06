@@ -5,7 +5,8 @@
 [![Python](https://img.shields.io/pypi/pyversions/celesto.svg)](https://pypi.org/project/celesto/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Sandboxed cloud computers for AI agents. Spin up isolated computers in seconds, run workflows/commands or long-running agents -- all from Python, JavaScript/TypeScript, or the CLI.
+Celesto gives AI agents their own cloud computer. Your agent can run commands,
+create files, and use tools without touching your machine.
 
 ```bash
 pip install celesto        # Python SDK + CLI
@@ -59,10 +60,10 @@ celesto computer delete einstein
 
 ## Why Celesto?
 
-- **Fast** -- computers boot in seconds via Firecracker microVMs
-- **Isolated** -- every sandbox is a real VM, not a container
+- **Fast** -- computers boot in seconds
+- **Isolated** -- each computer is separated from your machine
 - **Simple** -- three API calls: create, exec, delete
-- **Built for agents** -- give your AI full computer access without risking your host
+- **Built for agents** -- give your AI a computer it can safely use
 
 ## Installation
 
@@ -88,9 +89,14 @@ client = Celesto(api_key="your-api-key")
 
 ## OpenAI Agents SDK sandboxes
 
-Celesto can act as a sandbox provider for OpenAI `SandboxAgent` workflows. The
-hosted provider runs work on Celesto computers, and the local provider runs work
-on SmolVM.
+OpenAI agents can use Celesto as their working computer. This lets the agent
+read files, run commands, and create artifacts in an isolated place.
+
+OpenAI calls this a `SandboxAgent`: an agent that has a separate computer for
+its work. Celesto supports two options:
+
+- Hosted Celesto computers for cloud runs.
+- Local SmolVM sandboxes for work on your own machine.
 
 ```bash
 pip install "celesto[openai-agents]"        # hosted Celesto computers
@@ -101,7 +107,10 @@ pip install "celesto[openai-agents-smolvm]" # local SmolVM sandboxes too
 from agents import Runner
 from agents.run import RunConfig
 from agents.sandbox import SandboxAgent, SandboxRunConfig
-from celesto.integrations.openai_agents import CelestoSandboxClient, CelestoSandboxClientOptions
+from celesto.integrations.openai_agents import (
+    CelestoSandboxClient,
+    CelestoSandboxClientOptions,
+)
 
 agent = SandboxAgent(
     name="Workspace analyst",
@@ -123,7 +132,7 @@ finally:
 ```
 
 Use `SmolVMSandboxClient` and `SmolVMSandboxClientOptions` from the same module
-when you want the same `SandboxAgent` flow to run on a local SmolVM sandbox.
+when you want the same agent flow to run on a local SmolVM sandbox.
 
 ## Computers API
 

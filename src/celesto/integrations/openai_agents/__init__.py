@@ -1,6 +1,7 @@
-"""OpenAI Agents SDK integrations for Celesto sandboxes.
+"""Run OpenAI agents on Celesto computers or local SmolVM sandboxes.
 
-Import from this module only when ``openai-agents`` is installed.
+Import this module when you want OpenAI's ``SandboxAgent`` to use Celesto or
+SmolVM as its working computer.
 """
 
 from .sandbox import (

@@ -1,13 +1,12 @@
-"""OpenAI Agents SDK sandbox providers for Celesto.
+"""Run OpenAI agents on Celesto computers or local SmolVM sandboxes.
 
-This module lets ``agents.sandbox.SandboxAgent`` run against either:
+Use this module when an OpenAI ``SandboxAgent`` needs a real computer for files,
+commands, and generated artifacts. The model stays in your app. The work happens
+inside an isolated Celesto or SmolVM computer.
 
-- Celesto hosted computers, through the Celesto API.
-- Local SmolVM sandboxes, through the optional ``smolvm`` package.
-
-The OpenAI Agents SDK treats sandbox providers as pluggable clients and
-sessions. These classes implement that provider boundary while keeping the
-agent harness and model calls outside the sandbox.
+A sandbox provider is the small adapter that connects OpenAI's agent runner to a
+computer. This file provides that adapter for hosted Celesto computers and local
+SmolVM sandboxes.
 """
 
 from __future__ import annotations
@@ -36,8 +35,8 @@ try:
     from agents.sandbox.types import ExecResult, ExposedPortEndpoint, User
 except ImportError as exc:  # pragma: no cover - depends on optional extra
     raise ImportError(
-        "Celesto OpenAI Agents integration requires the optional dependency "
-        "'openai-agents'. Install it with: pip install 'celesto[openai-agents]'"
+        "OpenAI Agents support is not installed. Run "
+        "`pip install 'celesto[openai-agents]'` and try again."
     ) from exc
 
 from celesto.sdk.client import Celesto
@@ -61,11 +60,13 @@ def _coerce_bytes(data: io.IOBase, *, path: Path) -> bytes:
     try:
         return bytes(payload)
     except TypeError as exc:
-        raise TypeError(f"Could not read bytes for {path}.") from exc
+        raise TypeError(
+            f"Could not read file data for {path}. Pass a readable file object."
+        ) from exc
 
 
 class _CommandBackedSession(BaseSandboxSession):
-    """Shared file/workspace behavior for command-only sandbox backends."""
+    """Common file behavior for sandboxes that run shell commands."""
 
     async def _run_guest(self, command: str, *, timeout: float | None = None) -> Any:
         raise NotImplementedError
@@ -99,7 +100,7 @@ class _CommandBackedSession(BaseSandboxSession):
         script_parts = []
         if exports:
             script_parts.append(exports)
-        # The SDK may probe before the workspace exists. Only cd after it is ready.
+        # The OpenAI runner may check the computer before files are ready.
         script_parts.append(f"if [ -d {root} ]; then cd {root}; fi")
         script_parts.append(command_text)
         result = await self._run_guest("; ".join(script_parts), timeout=timeout)
@@ -133,7 +134,13 @@ class _CommandBackedSession(BaseSandboxSession):
             await self._run_guest(f"rm -f {b64_path}")
 
         if result.get("exit_code") != 0:
-            raise RuntimeError(result.get("stderr") or f"Could not write {remote_path}.")
+            raise RuntimeError(
+                result.get("stderr")
+                or (
+                    f"Could not write file in the sandbox: {remote_path}. "
+                    "Check the path or choose a writable folder."
+                )
+            )
 
     async def _write_bytes(self, path: Path, payload: bytes) -> None:
         workspace_path = self.normalize_path(path, for_write=True)
@@ -145,7 +152,10 @@ class _CommandBackedSession(BaseSandboxSession):
         quoted = shlex.quote(workspace_path.as_posix())
         result = await self._run_guest(f"test -r {quoted} && base64 < {quoted}")
         if result.get("exit_code") != 0:
-            raise FileNotFoundError(workspace_path.as_posix())
+            raise FileNotFoundError(
+                f"File is missing in the sandbox: {workspace_path.as_posix()}. "
+                "Check the path or create the file before reading it."
+            )
         return io.BytesIO(base64.b64decode(result.get("stdout", "").encode("utf-8")))
 
     async def write(
@@ -168,7 +178,10 @@ class _CommandBackedSession(BaseSandboxSession):
             timeout=120,
         )
         if result.get("exit_code") != 0:
-            raise RuntimeError(result.get("stderr") or "Could not persist workspace.")
+            raise RuntimeError(
+                result.get("stderr")
+                or "Could not save sandbox files. Create a new session and try again."
+            )
         return io.BytesIO(base64.b64decode(result.get("stdout", "").encode("utf-8")))
 
     async def hydrate_workspace(self, data: io.IOBase) -> None:
@@ -181,11 +194,14 @@ class _CommandBackedSession(BaseSandboxSession):
             timeout=120,
         )
         if result.get("exit_code") != 0:
-            raise RuntimeError(result.get("stderr") or "Could not hydrate workspace.")
+            raise RuntimeError(
+                result.get("stderr")
+                or "Could not restore sandbox files. Create a new session and try again."
+            )
 
 
 class CelestoSandboxClientOptions(BaseSandboxClientOptions):
-    """Options for hosted Celesto computers used by ``SandboxAgent``."""
+    """Settings for running a ``SandboxAgent`` on a Celesto computer."""
 
     type: Literal["celesto"] = "celesto"
     computer_id: str | None = None
@@ -196,7 +212,7 @@ class CelestoSandboxClientOptions(BaseSandboxClientOptions):
 
 
 class CelestoSandboxSessionState(SandboxSessionState):
-    """Serializable state for a hosted Celesto sandbox session."""
+    """Information needed to reconnect to a Celesto computer later."""
 
     type: Literal["celesto"] = "celesto"
     computer_id: str | None = None
@@ -207,7 +223,7 @@ class CelestoSandboxSessionState(SandboxSessionState):
 
 
 class CelestoSandboxSession(_CommandBackedSession):
-    """OpenAI Agents SDK session backed by a hosted Celesto computer."""
+    """A running OpenAI agent workspace on a Celesto computer."""
 
     state: CelestoSandboxSessionState
 
@@ -249,7 +265,10 @@ class CelestoSandboxSession(_CommandBackedSession):
 
     async def _run_guest(self, command: str, *, timeout: float | None = None) -> dict[str, Any]:
         if self.state.computer_id is None:
-            raise RuntimeError("Celesto computer is not created yet.")
+            raise RuntimeError(
+                "No Celesto computer is ready yet. Start the session with "
+                "`async with session:` before running commands."
+            )
         return await asyncio.to_thread(
             self._client.computers.exec,
             self.state.computer_id,
@@ -267,7 +286,7 @@ class CelestoSandboxSession(_CommandBackedSession):
 
 
 class CelestoSandboxClient(BaseSandboxClient[CelestoSandboxClientOptions | None]):
-    """OpenAI Agents SDK sandbox client for hosted Celesto computers."""
+    """Create and manage Celesto computers for OpenAI agents."""
 
     backend_id = "celesto"
     supports_default_options = True
@@ -311,13 +330,18 @@ class CelestoSandboxClient(BaseSandboxClient[CelestoSandboxClientOptions | None]
     async def delete(self, session: SandboxSession) -> SandboxSession:
         inner = session._inner
         if not isinstance(inner, CelestoSandboxSession):
-            raise TypeError("CelestoSandboxClient.delete expects a CelestoSandboxSession")
+            raise TypeError(
+                "Wrong session type. Use CelestoSandboxClient with CelestoSandboxSession."
+            )
         await inner._delete_backend()
         return session
 
     async def resume(self, state: SandboxSessionState) -> SandboxSession:
         if not isinstance(state, CelestoSandboxSessionState):
-            raise TypeError("CelestoSandboxClient.resume expects a CelestoSandboxSessionState")
+            raise TypeError(
+                "Wrong saved session type. Use CelestoSandboxClient with "
+                "CelestoSandboxSessionState."
+            )
         inner = CelestoSandboxSession.from_state(state, client=self._client)
         inner._set_start_state_preserved(True)
         return self._wrap_session(inner)
@@ -327,7 +351,7 @@ class CelestoSandboxClient(BaseSandboxClient[CelestoSandboxClientOptions | None]
 
 
 class SmolVMSandboxClientOptions(BaseSandboxClientOptions):
-    """Options for local SmolVM sandboxes used by ``SandboxAgent``."""
+    """Settings for running a ``SandboxAgent`` on local SmolVM."""
 
     type: Literal["smolvm"] = "smolvm"
     vm_id: str | None = None
@@ -340,7 +364,7 @@ class SmolVMSandboxClientOptions(BaseSandboxClientOptions):
 
 
 class SmolVMSandboxSessionState(SandboxSessionState):
-    """Serializable state for a local SmolVM sandbox session."""
+    """Information needed to reconnect to a local SmolVM sandbox later."""
 
     type: Literal["smolvm"] = "smolvm"
     vm_id: str | None = None
@@ -352,7 +376,7 @@ class SmolVMSandboxSessionState(SandboxSessionState):
 
 
 class SmolVMSandboxSession(_CommandBackedSession):
-    """OpenAI Agents SDK session backed by one local SmolVM VM."""
+    """A running OpenAI agent workspace on local SmolVM."""
 
     state: SmolVMSandboxSessionState
 
@@ -370,8 +394,8 @@ class SmolVMSandboxSession(_CommandBackedSession):
             from smolvm import SmolVM
         except ImportError as exc:  # pragma: no cover - depends on optional extra
             raise ImportError(
-                "SmolVM sandbox support requires the optional dependency 'smolvm'. "
-                "Install it with: pip install 'celesto[openai-agents-smolvm]'"
+                "SmolVM support is not installed. Run "
+                "`pip install 'celesto[openai-agents-smolvm]'` and try again."
             ) from exc
         return SmolVM
 
@@ -465,7 +489,7 @@ class SmolVMSandboxSession(_CommandBackedSession):
 
 
 class SmolVMSandboxClient(BaseSandboxClient[SmolVMSandboxClientOptions | None]):
-    """OpenAI Agents SDK sandbox client for local SmolVM sandboxes."""
+    """Create and manage local SmolVM sandboxes for OpenAI agents."""
 
     backend_id = "smolvm"
     supports_default_options = True
@@ -502,13 +526,18 @@ class SmolVMSandboxClient(BaseSandboxClient[SmolVMSandboxClientOptions | None]):
     async def delete(self, session: SandboxSession) -> SandboxSession:
         inner = session._inner
         if not isinstance(inner, SmolVMSandboxSession):
-            raise TypeError("SmolVMSandboxClient.delete expects a SmolVMSandboxSession")
+            raise TypeError(
+                "Wrong session type. Use SmolVMSandboxClient with SmolVMSandboxSession."
+            )
         await inner._delete_backend()
         return session
 
     async def resume(self, state: SandboxSessionState) -> SandboxSession:
         if not isinstance(state, SmolVMSandboxSessionState):
-            raise TypeError("SmolVMSandboxClient.resume expects a SmolVMSandboxSessionState")
+            raise TypeError(
+                "Wrong saved session type. Use SmolVMSandboxClient with "
+                "SmolVMSandboxSessionState."
+            )
         inner = SmolVMSandboxSession.from_state(state)
         inner._set_start_state_preserved(True)
         return self._wrap_session(inner)
