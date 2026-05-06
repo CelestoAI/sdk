@@ -76,7 +76,7 @@ class SmolVMSandboxSession(CommandBackedSession):
         except ImportError as exc:  # pragma: no cover - depends on optional extra
             raise ImportError(
                 "SmolVM support is not installed. Run "
-                "`pip install 'celesto[openai-agents-smolvm]'` and try again."
+                "`pip install 'celesto[openai-agents]'` and try again."
             ) from exc
         return SmolVM
 
