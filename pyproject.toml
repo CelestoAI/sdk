@@ -67,6 +67,9 @@ Repository = "https://github.com/CelestoAI/sdk"
 "Issue Tracker" = "https://github.com/CelestoAI/sdk/issues"
 Changelog = "https://github.com/CelestoAI/sdk/releases"
 
+[project.optional-dependencies]
+openai-agents= ["openai-agents", "smolvm"]
+
 [project.scripts]
 celesto = "celesto:app"
 
