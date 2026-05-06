@@ -99,8 +99,7 @@ its work. Celesto supports two options:
 - Local SmolVM sandboxes for work on your own machine.
 
 ```bash
-pip install "celesto[openai-agents]"        # hosted Celesto computers
-pip install "celesto[openai-agents-smolvm]" # local SmolVM sandboxes too
+pip install "celesto[openai-agents]"  
 ```
 
 ```python
