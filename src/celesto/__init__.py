@@ -3,6 +3,6 @@
 from .main import app
 from .sdk import Celesto
 
-__version__ = "0.0.5"
+__version__ = "0.0.4"
 
 __all__ = ["app", "Celesto", "__version__"]
