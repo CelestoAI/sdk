@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/celesto.svg)](https://pypi.org/project/celesto/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Celesto gives AI agents their own cloud computer. Your agent can run commands,
+Celesto gives AI agents their own isolated computer. Your agent can run commands,
 create files, and use tools without touching your machine.
 
 ```bash
