@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import urlparse
 
 from typer.testing import CliRunner
 
@@ -65,7 +66,12 @@ def test_computer_port_publish_prints_url(monkeypatch):
     result = runner.invoke(computer.app, ["port", "publish", "curie"])
 
     assert result.exit_code == 0
-    assert "https://p-test.celesto.ai" in result.output
+    urls = []
+    for token in result.output.split():
+        parsed = urlparse(token)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            urls.append(parsed)
+    assert any(u.scheme == "https" and u.hostname == "p-test.celesto.ai" for u in urls)
     assert fake_client.computers.calls == [("publish", "curie", 8000)]
 
 
