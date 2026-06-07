@@ -106,3 +106,57 @@ def test_computers_list_templates_hits_backend_endpoint():
     assert templates[0]["id"] == "scratch"
     assert session.calls[0]["method"] == "GET"
     assert session.calls[0]["url"] == "https://api.example.test/v1/computers/templates"
+
+
+def test_computers_publish_port_hits_backend_endpoint():
+    session = DummySession(
+        payload={
+            "id": "cpp_123",
+            "computer_id": "cmp_123",
+            "port": 8000,
+            "url": "https://p-test.celesto.ai",
+            "status": "published",
+            "created_at": "2026-06-07T00:00:00Z",
+        }
+    )
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    result = client.computers.publish_port("curie", port=8000)
+
+    assert result["url"] == "https://p-test.celesto.ai"
+    assert session.calls[0]["method"] == "POST"
+    assert session.calls[0]["url"] == "https://api.example.test/v1/computers/curie/published-ports"
+    assert session.calls[0]["json"] == {"port": 8000}
+
+
+def test_computers_list_published_ports_hits_backend_endpoint():
+    session = DummySession(payload=[])
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    result = client.computers.list_published_ports("cmp_123")
+
+    assert result == []
+    assert session.calls[0]["method"] == "GET"
+    assert session.calls[0]["url"] == "https://api.example.test/v1/computers/cmp_123/published-ports"
+
+
+def test_computers_unpublish_port_hits_backend_endpoint():
+    session = DummySession(
+        payload={
+            "computer_id": "cmp_123",
+            "port": 8000,
+            "url": None,
+            "status": "unpublished",
+            "created_at": None,
+        }
+    )
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    result = client.computers.unpublish_port("cmp_123", port=8000)
+
+    assert result["status"] == "unpublished"
+    assert session.calls[0]["method"] == "DELETE"
+    assert session.calls[0]["url"] == "https://api.example.test/v1/computers/cmp_123/published-ports/8000"

@@ -123,6 +123,26 @@ class ComputerConnectionInfo(TypedDict):
     access_url: NotRequired[str]
 
 
+PublishedPortStatus = Literal[
+    "publishing",
+    "published",
+    "unpublishing",
+    "unpublished",
+    "error",
+]
+
+
+class ComputerPublishedPortInfo(TypedDict):
+    """Information about a public computer port route."""
+
+    id: NotRequired[str | None]
+    computer_id: str
+    port: int
+    url: NotRequired[str | None]
+    status: PublishedPortStatus
+    created_at: NotRequired[str | None]
+
+
 class ComputerInfo(TypedDict):
     """Information about a computer."""
 
@@ -136,6 +156,7 @@ class ComputerInfo(TypedDict):
     template_id: str
     template_version: NotRequired[str | None]
     connection: NotRequired[ComputerConnectionInfo | None]
+    published_ports: NotRequired[List[ComputerPublishedPortInfo]]
     last_error: NotRequired[str | None]
     created_at: str
     stopped_at: NotRequired[str | None]
@@ -188,6 +209,8 @@ __all__ = [
     # Computer
     "ComputerStatus",
     "ComputerConnectionInfo",
+    "PublishedPortStatus",
+    "ComputerPublishedPortInfo",
     "ComputerInfo",
     "SandboxTemplateInfo",
     "ComputerListResponse",

@@ -892,6 +892,45 @@ class Computers(_BaseClient):
         """
         return self._request("GET", f"/computers/{computer_id}")
 
+    def publish_port(self, computer_id: str, port: int = 8000) -> dict[str, Any]:
+        """Publish a computer port to the internet.
+
+        Args:
+            computer_id: Computer ID or name.
+            port: Port to publish. The MVP supports port 8000.
+
+        Returns:
+            Published port dict with id, computer_id, port, url, status, and created_at.
+        """
+        return self._request(
+            "POST",
+            f"/computers/{computer_id}/published-ports",
+            json_body={"port": port},
+        )
+
+    def list_published_ports(self, computer_id: str) -> List[dict[str, Any]]:
+        """List active published ports for a computer.
+
+        Args:
+            computer_id: Computer ID or name.
+
+        Returns:
+            List of published port dicts.
+        """
+        return self._request("GET", f"/computers/{computer_id}/published-ports")
+
+    def unpublish_port(self, computer_id: str, port: int = 8000) -> dict[str, Any]:
+        """Remove a published computer port.
+
+        Args:
+            computer_id: Computer ID or name.
+            port: Published port to remove. The MVP supports port 8000.
+
+        Returns:
+            Unpublished port dict.
+        """
+        return self._request("DELETE", f"/computers/{computer_id}/published-ports/{port}")
+
     def exec(
         self,
         computer_id: str,
