@@ -10,6 +10,7 @@ from dotenv.main import DotEnv
 from rich.console import Console
 from typing_extensions import Annotated
 
+from .auth import load_api_key
 from .sdk.client import Celesto
 
 console = Console()
@@ -36,15 +37,10 @@ def _get_api_key(
     final_api_key = api_key or os.environ.get(secret_name or "CELESTO_API_KEY")
     if not final_api_key and not ignore_env_file:
         final_api_key = _get_secrets_from_env_file(secret_name=secret_name)
+    if not final_api_key and (secret_name or "CELESTO_API_KEY") == "CELESTO_API_KEY":
+        final_api_key = load_api_key()
     if not final_api_key:
-        console.print("❌ [bold red]Error:[/bold red] API key not found.")
-        console.print(
-            "Please provide it via [bold]--api-key[/bold] or set [bold]CELESTO_API_KEY[/bold] environment variable."
-        )
-        console.print("\n[bold cyan]To get your API key:[/bold cyan]")
-        console.print("1. Log in to https://celesto.ai")
-        console.print("2. Navigate to Settings → Security")
-        console.print("3. Copy your API key")
+        console.print("No Celesto API key was found. Run celesto auth login.")
         raise typer.Exit(1)
     return final_api_key
 

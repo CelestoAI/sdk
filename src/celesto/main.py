@@ -3,12 +3,13 @@ from __future__ import annotations
 import typer
 from rich import print
 
-from . import computer
+from . import auth, computer
 
 app = typer.Typer(
     help="Infrastructure for sandboxes and computer-use agents.",
     no_args_is_help=True,
 )
+app.add_typer(auth.app, name="auth")
 app.add_typer(computer.app, name="computer")
 
 
