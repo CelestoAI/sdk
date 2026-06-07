@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from shutil import which
 
 import typer
 from rich import print
@@ -16,9 +17,37 @@ app.add_typer(auth.app, name="auth")
 app.add_typer(computer.app, name="computer")
 
 
-def _run_pip_update() -> None:
+def _has_pip() -> bool:
+    return (
+        subprocess.run(
+            [sys.executable, "-m", "pip", "--version"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+        == 0
+    )
+
+
+def _run_update() -> None:
+    if _has_pip():
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "celesto"],
+            check=True,
+        )
+        return
+
+    uv = which("uv")
+    if uv is None:
+        raise RuntimeError(
+            "This Python environment does not have pip. "
+            "Install pip or run uv pip install --python "
+            f"{sys.executable} --upgrade celesto."
+        )
+
+    print("pip is not installed in this environment. Using uv instead...")
     subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--upgrade", "celesto"],
+        [uv, "pip", "install", "--python", sys.executable, "--upgrade", "celesto"],
         check=True,
     )
 
@@ -28,12 +57,15 @@ def update() -> None:
     """Update Celesto to the newest version available from pip."""
     print("Checking for a newer Celesto version...")
     try:
-        _run_pip_update()
+        _run_update()
     except subprocess.CalledProcessError:
         print(
             "[red]Could not update Celesto. "
-            "Run python -m pip install --upgrade celesto.[/red]"
+            f"Run uv pip install --python {sys.executable} --upgrade celesto.[/red]"
         )
+        raise typer.Exit(1) from None
+    except RuntimeError as exc:
+        print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from None
     print("Celesto is up to date or has been updated.")
 
