@@ -77,6 +77,15 @@ Requires Python 3.10+.
 
 Get your API key from [celesto.ai](https://celesto.ai) under **Settings > Security**.
 
+For CLI commands, save it once:
+
+```bash
+celesto auth login
+```
+
+The CLI stores the key in your operating system's secure credential store and
+uses it for future commands.
+
 ```bash
 export CELESTO_API_KEY="your-api-key"
 ```
@@ -188,6 +197,9 @@ for vm in result["computers"]:
 
 | Command | Description |
 |---|---|
+| `celesto auth login` | Save your API key |
+| `celesto auth status` | Check whether an API key is saved |
+| `celesto auth logout` | Remove your saved API key |
 | `celesto computer create [--template ID] [--cpus N] [--memory MB] [--disk-size-mb MB]` | Create a computer |
 | `celesto computer templates` | List computer templates |
 | `celesto computer list` | List all computers |
