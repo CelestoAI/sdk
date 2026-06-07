@@ -22,7 +22,7 @@ from celesto import Celesto
 
 client = Celesto()
 
-computer = client.computers.create(cpus=2, memory=2048)
+computer = client.computers.create(template_id="coding-agent")
 print(f"Computer ready: {computer['name']}")
 
 result = client.computers.exec(computer["id"], "uname -a")
@@ -38,7 +38,7 @@ import { Celesto } from "@celestoai/sdk";
 
 const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
 
-const computer = await celesto.computers.create({ cpus: 2, memory: 2048 });
+const computer = await celesto.computers.create({ templateId: "coding-agent" });
 console.log(`Computer ready: ${computer.name}`);
 
 const result = await celesto.computers.exec(computer.id, "uname -a");
@@ -52,7 +52,7 @@ await celesto.computers.delete(computer.id);
 ```bash
 export CELESTO_API_KEY="your-api-key"
 
-celesto computer create --cpus 2 --memory 2048
+celesto computer create --template coding-agent
 celesto computer run einstein "ls -la"
 celesto computer ssh einstein       # interactive shell
 celesto computer delete einstein
@@ -117,7 +117,9 @@ agent = SandboxAgent(
 )
 
 client = CelestoSandboxClient()
-session = await client.create(options=CelestoSandboxClientOptions(cpus=2, memory=2048))
+session = await client.create(
+    options=CelestoSandboxClientOptions(template_id="coding-agent")
+)
 try:
     async with session:
         result = await Runner.run(
@@ -135,11 +137,27 @@ when you want the same agent flow to run on a local SmolVM sandbox.
 
 ## Computers API
 
+Templates are ready-made computer setups. Choose one when you want a computer
+that already has the tools your agent needs.
+
 ### Create
 
 ```python
-computer = client.computers.create(cpus=2, memory=2048)
+computer = client.computers.create(
+    template_id="coding-agent",
+    cpus=2,
+    memory=2048,
+    disk_size_mb=15360,
+)
 print(computer["name"])  # e.g., "einstein"
+```
+
+Omit CPU, memory, or disk fields to use the selected template defaults.
+
+```python
+templates = client.computers.list_templates()
+for template in templates:
+    print(template["id"], template["default_ram_mb"])
 ```
 
 ### Execute commands
@@ -170,7 +188,8 @@ for vm in result["computers"]:
 
 | Command | Description |
 |---|---|
-| `celesto computer create [--cpus N] [--memory MB]` | Create a computer |
+| `celesto computer create [--template ID] [--cpus N] [--memory MB] [--disk-size-mb MB]` | Create a computer |
+| `celesto computer templates` | List computer templates |
 | `celesto computer list` | List all computers |
 | `celesto computer run <name> "command"` | Execute a command |
 | `celesto computer ssh <name>` | Interactive shell |
@@ -184,7 +203,8 @@ All commands support `--json` for machine-readable output:
 
 ```bash
 celesto computer list --json
-celesto computer create --cpus 2 --memory 2048 --json
+celesto computer templates --json
+celesto computer create --template coding-agent --disk-size-mb 15360 --json
 celesto computer run einstein "uname -a" --json
 ```
 

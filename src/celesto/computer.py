@@ -41,6 +41,8 @@ def _status_color(status: str) -> str:
         "stopping": "yellow",
         "stopped": "dim",
         "starting": "yellow",
+        "restoring": "yellow",
+        "restorable": "cyan",
         "deleting": "yellow",
         "deleted": "dim",
         "error": "red",
@@ -54,6 +56,18 @@ def _format_memory(mb: int) -> str:
     return f"{mb} MB"
 
 
+def _format_optional_memory(value: object) -> str:
+    if isinstance(value, int):
+        return _format_memory(value)
+    return "N/A"
+
+
+def _format_optional_text(value: object) -> str:
+    if isinstance(value, str) and value:
+        return value
+    return "N/A"
+
+
 def _print_json(data: object) -> None:
     """Print JSON to stdout (no Rich formatting)."""
     sys.stdout.write(json.dumps(data, indent=2, default=str) + "\n")
@@ -62,9 +76,31 @@ def _print_json(data: object) -> None:
 @app.command("create")
 def create_computer(
     cpus: Annotated[
-        int, typer.Option("--cpus", "-c", help="Number of virtual CPUs")
-    ] = 1,
-    memory: Annotated[int, typer.Option("--memory", "-m", help="Memory in MB")] = 1024,
+        Optional[int], typer.Option("--cpus", "-c", help="Number of virtual CPUs")
+    ] = None,
+    memory: Annotated[
+        Optional[int], typer.Option("--memory", "-m", help="Memory in MB")
+    ] = None,
+    disk_size_mb: Annotated[
+        Optional[int],
+        typer.Option("--disk-size-mb", "--disk", help="Disk size in MB"),
+    ] = None,
+    template_id: Annotated[
+        Optional[str],
+        typer.Option(
+            "--template",
+            "--template-id",
+            help="Sandbox template id, such as scratch, coding-agent, or browser-agent",
+        ),
+    ] = None,
+    template_version: Annotated[
+        Optional[str],
+        typer.Option("--template-version", help="Immutable template version"),
+    ] = None,
+    image: Annotated[
+        Optional[str],
+        typer.Option("--image", help="Legacy image selector"),
+    ] = None,
     as_json: JsonOption = False,
     api_key: ApiKeyOption = None,
 ):
@@ -72,7 +108,14 @@ def create_computer(
     with _get_client(api_key) as client:
         if not as_json:
             console.print("Creating computer...", style="dim")
-        result = client.computers.create(cpus=cpus, memory=memory)
+        result = client.computers.create(
+            cpus=cpus,
+            memory=memory,
+            disk_size_mb=disk_size_mb,
+            template_id=template_id,
+            template_version=template_version,
+            image=image,
+        )
 
     if as_json:
         _print_json(result)
@@ -86,8 +129,10 @@ def create_computer(
     console.print(f"  Name:   [bold]{cname}[/bold]")
     console.print(f"  ID:     [dim]{cid}[/dim]")
     console.print(f"  Status: [{color}]{status}[/{color}]")
-    console.print(f"  CPUs:   {cpus}")
-    console.print(f"  Memory: {_format_memory(memory)}")
+    console.print(f"  CPUs:   {result.get('vcpus')}")
+    console.print(f"  Memory: {_format_optional_memory(result.get('ram_mb'))}")
+    console.print(f"  Disk:   {_format_optional_memory(result.get('disk_size_mb'))}")
+    console.print(f"  Template: {_format_optional_text(result.get('template_id'))}")
     console.print()
     console.print(f"[dim]Connect with:[/dim] celesto computer ssh {cname}")
 
@@ -118,6 +163,8 @@ def list_computers(
     table.add_column("Status")
     table.add_column("CPUs", justify="right")
     table.add_column("Memory", justify="right")
+    table.add_column("Disk", justify="right")
+    table.add_column("Template")
     table.add_column("Created")
 
     for c in computers:
@@ -128,7 +175,45 @@ def list_computers(
             f"[{color}]{c['status']}[/{color}]",
             str(c["vcpus"]),
             _format_memory(c["ram_mb"]),
+            _format_optional_memory(c.get("disk_size_mb")),
+            _format_optional_text(c.get("template_id")),
             c.get("created_at", "")[:19],
+        )
+
+    console.print(table)
+
+
+@app.command("templates")
+def list_templates(
+    as_json: JsonOption = False,
+    api_key: ApiKeyOption = None,
+):
+    """List ready-made computer setups."""
+    with _get_client(api_key) as client:
+        templates = client.computers.list_templates()
+
+    if as_json:
+        _print_json(templates)
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("ID", style="bold")
+    table.add_column("Name")
+    table.add_column("CPUs", justify="right")
+    table.add_column("Memory", justify="right")
+    table.add_column("Disk", justify="right")
+    table.add_column("Version")
+    table.add_column("Experimental")
+
+    for template in templates:
+        table.add_row(
+            template["id"],
+            template["display_name"],
+            str(template["default_vcpus"]),
+            _format_memory(template["default_ram_mb"]),
+            _format_memory(template["default_disk_size_mb"]),
+            template.get("version") or "",
+            "yes" if template.get("experimental") else "",
         )
 
     console.print(table)
@@ -155,7 +240,7 @@ def run_command(
         except CelestoServerError as e:
             if "stopped" in str(e).lower() or "409" in str(e):
                 if not as_json:
-                    console.print(f"[yellow]Computer is stopped. Resuming...[/yellow]")
+                    console.print("[yellow]Computer is stopped. Resuming...[/yellow]")
                 client.computers.start(computer_id)
                 # Wait for it to be running
                 for _ in range(30):
@@ -206,7 +291,7 @@ def ssh_to_computer(
         info = client.computers.get(computer_id)
         resolved_id = info.get("id", computer_id)
         if info.get("status") == "stopped":
-            console.print(f"[yellow]Computer is stopped. Resuming...[/yellow]")
+            console.print("[yellow]Computer is stopped. Resuming...[/yellow]")
             client.computers.start(resolved_id)
             for _ in range(30):
                 info = client.computers.get(resolved_id)
@@ -257,7 +342,9 @@ def ssh_to_computer(
                     os.write(sys.stdout.fileno(), msg)
         except websockets.exceptions.ConnectionClosed as e:
             if e.rcvd and e.rcvd.code != 1000:
-                console.print(f"\n[red]Connection closed: code={e.rcvd.code} reason={e.rcvd.reason}[/red]")
+                console.print(
+                    f"\n[red]Connection closed: code={e.rcvd.code} reason={e.rcvd.reason}[/red]"
+                )
         except OSError:
             pass
         finally:

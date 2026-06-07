@@ -7,6 +7,7 @@ Use this module when you want Celesto to create the computer for an OpenAI
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from contextlib import suppress
 from typing import Any, Literal
@@ -31,9 +32,14 @@ class CelestoSandboxClientOptions(BaseSandboxClientOptions):
 
     type: Literal["celesto"] = "celesto"
     computer_id: str | None = None
-    cpus: int = 1
-    memory: int = 1024
-    image: str = "ubuntu-desktop-24.04"
+    cpus: int | None = None
+    memory: int | None = None
+    disk_size_mb: int | None = None
+    image: str | None = None
+    template_id: str | None = "coding-agent"
+    template_version: str | None = None
+    start_timeout_seconds: float = 120
+    start_poll_interval_seconds: float = 2
     delete_on_close: bool | None = None
 
 
@@ -42,9 +48,14 @@ class CelestoSandboxSessionState(SandboxSessionState):
 
     type: Literal["celesto"] = "celesto"
     computer_id: str | None = None
-    cpus: int = 1
-    memory: int = 1024
-    image: str = "ubuntu-desktop-24.04"
+    cpus: int | None = None
+    memory: int | None = None
+    disk_size_mb: int | None = None
+    image: str | None = None
+    template_id: str | None = "coding-agent"
+    template_version: str | None = None
+    start_timeout_seconds: float = 120
+    start_poll_interval_seconds: float = 2
     delete_on_close: bool = True
 
 
@@ -68,20 +79,67 @@ class CelestoSandboxSession(CommandBackedSession):
     ) -> "CelestoSandboxSession":
         return cls(state=state, client=client)
 
+    async def _wait_for_running(self) -> None:
+        if self.state.computer_id is None:
+            return
+
+        deadline = time.monotonic() + self.state.start_timeout_seconds
+        delay = max(0.25, self.state.start_poll_interval_seconds)
+        last_status: str | None = None
+
+        while time.monotonic() < deadline:
+            try:
+                info = await asyncio.to_thread(
+                    self._client.computers.get,
+                    self.state.computer_id,
+                )
+            except Exception:
+                await asyncio.sleep(delay)
+                delay = min(delay * 1.5, 5)
+                continue
+
+            last_status = str(info.get("status"))
+            if last_status == "running":
+                return
+            if last_status == "error":
+                raise RuntimeError(
+                    f"Computer {self.state.computer_id} could not start. "
+                    f"Delete it with client.computers.delete('{self.state.computer_id}') and create a new one."
+                )
+
+            await asyncio.sleep(delay)
+
+        raise RuntimeError(
+            f"Computer {self.state.computer_id} is not ready yet. "
+            f"Check it with client.computers.get('{self.state.computer_id}') and try again."
+        )
+
     async def _ensure_backend_started(self) -> None:
         if self.state.computer_id is None:
             created = await asyncio.to_thread(
                 self._client.computers.create,
                 cpus=self.state.cpus,
                 memory=self.state.memory,
+                disk_size_mb=self.state.disk_size_mb,
                 image=self.state.image,
+                template_id=self.state.template_id,
+                template_version=self.state.template_version,
             )
             self.state.computer_id = created["id"]
+            if created.get("status") != "running":
+                await self._wait_for_running()
             return
 
-        info = await asyncio.to_thread(self._client.computers.get, self.state.computer_id)
+        info = await asyncio.to_thread(
+            self._client.computers.get, self.state.computer_id
+        )
         if info.get("status") == "stopped":
-            await asyncio.to_thread(self._client.computers.start, self.state.computer_id)
+            await asyncio.to_thread(
+                self._client.computers.start, self.state.computer_id
+            )
+            await self._wait_for_running()
+        elif info.get("status") != "running":
+            await self._wait_for_running()
 
     async def _shutdown_backend(self) -> None:
         if self.state.computer_id is None:
@@ -90,7 +148,9 @@ class CelestoSandboxSession(CommandBackedSession):
             await asyncio.to_thread(self._client.computers.stop, self.state.computer_id)
         self._running = False
 
-    async def _run_guest(self, command: str, *, timeout: float | None = None) -> dict[str, Any]:
+    async def _run_guest(
+        self, command: str, *, timeout: float | None = None
+    ) -> dict[str, Any]:
         if self.state.computer_id is None:
             raise RuntimeError(
                 "No Celesto computer is ready yet. Start the session with "
@@ -109,7 +169,9 @@ class CelestoSandboxSession(CommandBackedSession):
             return
         if self.state.delete_on_close:
             with suppress(Exception):
-                await asyncio.to_thread(self._client.computers.delete, self.state.computer_id)
+                await asyncio.to_thread(
+                    self._client.computers.delete, self.state.computer_id
+                )
         self._running = False
 
 
@@ -140,7 +202,9 @@ class CelestoSandboxClient(BaseSandboxClient[CelestoSandboxClientOptions | None]
         session_id = uuid.uuid4()
         created_by_client = resolved.computer_id is None
         delete_on_close = (
-            created_by_client if resolved.delete_on_close is None else resolved.delete_on_close
+            created_by_client
+            if resolved.delete_on_close is None
+            else resolved.delete_on_close
         )
         state = CelestoSandboxSessionState(
             session_id=session_id,
@@ -149,7 +213,12 @@ class CelestoSandboxClient(BaseSandboxClient[CelestoSandboxClientOptions | None]
             computer_id=resolved.computer_id,
             cpus=resolved.cpus,
             memory=resolved.memory,
+            disk_size_mb=resolved.disk_size_mb,
             image=resolved.image,
+            template_id=resolved.template_id,
+            template_version=resolved.template_version,
+            start_timeout_seconds=resolved.start_timeout_seconds,
+            start_poll_interval_seconds=resolved.start_poll_interval_seconds,
             delete_on_close=delete_on_close,
         )
         inner = CelestoSandboxSession.from_state(state, client=self._client)
@@ -174,7 +243,9 @@ class CelestoSandboxClient(BaseSandboxClient[CelestoSandboxClientOptions | None]
         inner._set_start_state_preserved(True)
         return self._wrap_session(inner)
 
-    def deserialize_session_state(self, payload: dict[str, object]) -> SandboxSessionState:
+    def deserialize_session_state(
+        self, payload: dict[str, object]
+    ) -> SandboxSessionState:
         return CelestoSandboxSessionState.model_validate(payload)
 
 

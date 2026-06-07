@@ -7,5 +7,6 @@ export type {
   ComputerStatus,
   CreateComputerParams,
   ExecParams,
+  SandboxTemplateInfo,
   TerminalConnectionInfo,
 } from "./types";

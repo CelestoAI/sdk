@@ -8,6 +8,7 @@ import {
   ComputerStatus,
   CreateComputerParams,
   ExecParams,
+  SandboxTemplateInfo,
   TerminalConnectionInfo,
 } from "./types";
 
@@ -22,7 +23,10 @@ interface ComputerInfoWire {
   status: ComputerStatus;
   vcpus: number;
   ram_mb: number;
+  disk_size_mb: number;
   image: string;
+  template_id: string;
+  template_version?: string | null;
   connection?: ComputerConnectionInfoWire | null;
   last_error?: string | null;
   created_at: string;
@@ -38,6 +42,17 @@ interface ComputerExecResponseWire {
   exit_code: number;
   stdout: string;
   stderr: string;
+}
+
+interface SandboxTemplateInfoWire {
+  id: string;
+  display_name: string;
+  description: string;
+  default_vcpus: number;
+  default_ram_mb: number;
+  default_disk_size_mb: number;
+  version?: string | null;
+  experimental: boolean;
 }
 
 const toConnection = (
@@ -62,7 +77,10 @@ const toComputerInfo = (payload: ComputerInfoWire): ComputerInfo => ({
   status: payload.status,
   vcpus: payload.vcpus,
   ramMb: payload.ram_mb,
+  diskSizeMb: payload.disk_size_mb,
   image: payload.image,
+  templateId: payload.template_id,
+  templateVersion: payload.template_version ?? null,
   connection: toConnection(payload.connection),
   lastError: payload.last_error ?? null,
   createdAt: payload.created_at,
@@ -74,6 +92,49 @@ const toExecResponse = (payload: ComputerExecResponseWire): ComputerExecResponse
   stdout: payload.stdout,
   stderr: payload.stderr,
 });
+
+const toSandboxTemplateInfo = (payload: SandboxTemplateInfoWire): SandboxTemplateInfo => ({
+  id: payload.id,
+  displayName: payload.display_name,
+  description: payload.description,
+  defaultVcpus: payload.default_vcpus,
+  defaultRamMb: payload.default_ram_mb,
+  defaultDiskSizeMb: payload.default_disk_size_mb,
+  version: payload.version ?? null,
+  experimental: payload.experimental,
+});
+
+const buildCreateComputerBody = (params: CreateComputerParams): Record<string, unknown> => {
+  if (params.cpus !== undefined && params.vcpus !== undefined && params.cpus !== params.vcpus) {
+    throw new Error("cpus and vcpus must have the same value when both are provided.");
+  }
+  if (params.memory !== undefined && params.ramMb !== undefined && params.memory !== params.ramMb) {
+    throw new Error("memory and ramMb must have the same value when both are provided.");
+  }
+
+  const body: Record<string, unknown> = {};
+  const vcpus = params.vcpus ?? params.cpus;
+  const ramMb = params.ramMb ?? params.memory;
+  if (vcpus !== undefined) {
+    body.vcpus = vcpus;
+  }
+  if (ramMb !== undefined) {
+    body.ram_mb = ramMb;
+  }
+  if (params.diskSizeMb !== undefined) {
+    body.disk_size_mb = params.diskSizeMb;
+  }
+  if (params.image !== undefined) {
+    body.image = params.image;
+  }
+  if (params.templateId !== undefined) {
+    body.template_id = params.templateId;
+  }
+  if (params.templateVersion !== undefined) {
+    body.template_version = params.templateVersion;
+  }
+  return body;
+};
 
 const computersPath = (path: string): string => `/v1/computers${path}`;
 
@@ -92,7 +153,7 @@ const pickOverrides = (options?: RequestOverrides): RequestOverrides => ({
  * @example
  * ```ts
  * const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
- * const computer = await celesto.computers.create({ cpus: 2, memory: 2048 });
+ * const computer = await celesto.computers.create({ templateId: "coding-agent" });
  * const result = await celesto.computers.exec(computer.id, "uname -a");
  * console.log(result.stdout);
  * await celesto.computers.delete(computer.id);
@@ -110,14 +171,20 @@ export class ComputersClient {
     const data = await request<ComputerInfoWire>(ctx, {
       method: "POST",
       path: computersPath(""),
-      body: {
-        vcpus: params.cpus ?? 1,
-        ram_mb: params.memory ?? 1024,
-        image: params.image ?? "ubuntu-desktop-24.04",
-      },
+      body: buildCreateComputerBody(params),
       ...pickOverrides(options),
     });
     return toComputerInfo(data);
+  }
+
+  async listTemplates(options?: RequestOverrides): Promise<SandboxTemplateInfo[]> {
+    const ctx = buildRequestContext(this.config);
+    const data = await request<SandboxTemplateInfoWire[]>(ctx, {
+      method: "GET",
+      path: computersPath("/templates"),
+      ...pickOverrides(options),
+    });
+    return data.map(toSandboxTemplateInfo);
   }
 
   async list(options?: RequestOverrides): Promise<ComputerListResponse> {

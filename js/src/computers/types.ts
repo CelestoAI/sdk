@@ -4,6 +4,8 @@ export type ComputerStatus =
   | "stopping"
   | "stopped"
   | "starting"
+  | "restoring"
+  | "restorable"
   | "deleting"
   | "deleted"
   | "error";
@@ -19,7 +21,10 @@ export interface ComputerInfo {
   status: ComputerStatus;
   vcpus: number;
   ramMb: number;
+  diskSizeMb: number;
   image: string;
+  templateId: string;
+  templateVersion?: string | null;
   connection?: ComputerConnectionInfo;
   lastError?: string | null;
   createdAt: string;
@@ -37,13 +42,34 @@ export interface ComputerExecResponse {
   stderr: string;
 }
 
+export interface SandboxTemplateInfo {
+  id: string;
+  displayName: string;
+  description: string;
+  defaultVcpus: number;
+  defaultRamMb: number;
+  defaultDiskSizeMb: number;
+  version?: string | null;
+  experimental: boolean;
+}
+
 export interface CreateComputerParams {
-  /** Number of virtual CPUs (1-16). Defaults to 1. */
+  /** Number of virtual CPUs (1-16). Alias for vcpus. */
   cpus?: number;
-  /** Memory in MB (512-32768). Defaults to 1024. */
+  /** Number of virtual CPUs (1-16). */
+  vcpus?: number;
+  /** Memory in MB (512-32768). Alias for ramMb. */
   memory?: number;
-  /** OS image name. Defaults to "ubuntu-desktop-24.04". */
+  /** Memory in MB (512-32768). */
+  ramMb?: number;
+  /** Disk size in MB (512-51200). */
+  diskSizeMb?: number;
+  /** Legacy OS image selector. */
   image?: string;
+  /** Sandbox template id, such as "scratch" or "coding-agent". */
+  templateId?: string;
+  /** Optional immutable template version. */
+  templateVersion?: string;
 }
 
 export interface ExecParams {

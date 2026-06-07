@@ -108,6 +108,8 @@ ComputerStatus = Literal[
     "stopping",
     "stopped",
     "starting",
+    "restoring",
+    "restorable",
     "deleting",
     "deleted",
     "error",
@@ -129,11 +131,27 @@ class ComputerInfo(TypedDict):
     status: ComputerStatus
     vcpus: int
     ram_mb: int
+    disk_size_mb: int
     image: str
-    connection: NotRequired[ComputerConnectionInfo]
-    last_error: NotRequired[str]
+    template_id: str
+    template_version: NotRequired[str | None]
+    connection: NotRequired[ComputerConnectionInfo | None]
+    last_error: NotRequired[str | None]
     created_at: str
-    stopped_at: NotRequired[str]
+    stopped_at: NotRequired[str | None]
+
+
+class SandboxTemplateInfo(TypedDict):
+    """A sandbox template available for computer creation."""
+
+    id: str
+    display_name: str
+    description: str
+    default_vcpus: int
+    default_ram_mb: int
+    default_disk_size_mb: int
+    version: NotRequired[str | None]
+    experimental: bool
 
 
 class ComputerListResponse(TypedDict):
@@ -171,6 +189,7 @@ __all__ = [
     "ComputerStatus",
     "ComputerConnectionInfo",
     "ComputerInfo",
+    "SandboxTemplateInfo",
     "ComputerListResponse",
     "ComputerExecResponse",
 ]

@@ -27,6 +27,7 @@ export type {
   ComputerStatus,
   CreateComputerParams,
   ExecParams,
+  SandboxTemplateInfo,
   TerminalConnectionInfo,
 } from "./computers";
 export type { ClientConfig, RequestOverrides } from "./core/config";

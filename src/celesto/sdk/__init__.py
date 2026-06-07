@@ -23,6 +23,7 @@ from .types import (
     DeploymentResponse,
     DriveFile,
     DriveFilesResponse,
+    SandboxTemplateInfo,
 )
 
 __all__ = [
@@ -49,6 +50,7 @@ __all__ = [
     "ComputerStatus",
     "ComputerConnectionInfo",
     "ComputerInfo",
+    "SandboxTemplateInfo",
     "ComputerListResponse",
     "ComputerExecResponse",
 ]
