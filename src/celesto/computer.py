@@ -15,6 +15,8 @@ from .deployment import _get_api_key
 from .sdk.client import Celesto
 
 app = typer.Typer(help="Create, manage, and connect to sandboxed computers.")
+port_app = typer.Typer(help="Publish and unpublish computer ports.")
+app.add_typer(port_app, name="port")
 console = Console()
 
 # Common option types
@@ -71,6 +73,77 @@ def _format_optional_text(value: object) -> str:
 def _print_json(data: object) -> None:
     """Print JSON to stdout (no Rich formatting)."""
     sys.stdout.write(json.dumps(data, indent=2, default=str) + "\n")
+
+
+@port_app.command("publish")
+def publish_port(
+    computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to publish")] = 8000,
+    as_json: JsonOption = False,
+    api_key: ApiKeyOption = None,
+):
+    """Publish a computer port to the internet."""
+    with _get_client(api_key) as client:
+        result = client.computers.publish_port(computer_id, port=port)
+
+    if as_json:
+        _print_json(result)
+        return
+
+    console.print(result.get("url") or "")
+
+
+@port_app.command("list")
+def list_ports(
+    computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
+    as_json: JsonOption = False,
+    api_key: ApiKeyOption = None,
+):
+    """List published ports for a computer."""
+    with _get_client(api_key) as client:
+        ports = client.computers.list_published_ports(computer_id)
+
+    if as_json:
+        _print_json(ports)
+        return
+
+    if not ports:
+        console.print("[dim]No published ports.[/dim]")
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Port", justify="right")
+    table.add_column("Status")
+    table.add_column("URL")
+    table.add_column("Created")
+
+    for published_port in ports:
+        table.add_row(
+            str(published_port.get("port", "")),
+            str(published_port.get("status", "")),
+            str(published_port.get("url") or ""),
+            str(published_port.get("created_at") or "")[:19],
+        )
+
+    console.print(table)
+
+
+@port_app.command("unpublish")
+def unpublish_port(
+    computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to unpublish")] = 8000,
+    as_json: JsonOption = False,
+    api_key: ApiKeyOption = None,
+):
+    """Unpublish a computer port."""
+    with _get_client(api_key) as client:
+        result = client.computers.unpublish_port(computer_id, port=port)
+
+    if as_json:
+        _print_json(result)
+        return
+
+    console.print(f"[dim]Port {port} is unpublished.[/dim]")
 
 
 @app.command("create")
