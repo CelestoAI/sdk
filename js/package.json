@@ -3,6 +3,11 @@
   "version": "0.1.2",
   "description": "Celesto SDK — Gatekeeper and Computers clients for Node.js",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CelestoAI/sdk.git",
+    "directory": "js"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
