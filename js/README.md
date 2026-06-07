@@ -62,7 +62,7 @@ node quickstart.mjs
 
 ## Computers
 
-A computer is a temporary cloud machine for your app or agent. By default,
+A computer is a disposable cloud machine for your app or agent. By default,
 Celesto creates a `scratch` computer, which is a minimal Ubuntu computer.
 
 ### Create with Custom Resources
@@ -211,7 +211,7 @@ Full Gatekeeper docs: https://docs.celesto.ai/celesto-sdk/gatekeeper
 | `timeoutMs` | Request timeout in milliseconds |
 | `headers` | Extra headers to send with every request |
 
-A JWT is a signed login token. Most users should use a Celesto API key.
+JWT is a signed login token. Most users should use a Celesto API key.
 
 ## Errors
 
