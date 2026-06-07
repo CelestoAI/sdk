@@ -24,7 +24,7 @@ def _get_secrets_from_env_file(
     if not secret_name:
         secret_name = "CELESTO_API_KEY"
     dotenv_path = Path(env_file)
-    dot_env = DotEnv(dotenv_path, verbose=True, encoding="utf-8")
+    dot_env = DotEnv(dotenv_path, verbose=False, encoding="utf-8")
     return dot_env.get(secret_name)
 
 

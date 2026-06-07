@@ -35,13 +35,16 @@ def test_auth_helpers_use_base_url_scoped_keyring(monkeypatch):
 
 
 def test_get_api_key_uses_saved_key_after_env_and_dotenv_miss(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, capsys
 ):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CELESTO_API_KEY", raising=False)
     monkeypatch.setattr("celesto.deployment.load_api_key", lambda: "stored-key")
 
     assert _get_api_key() == "stored-key"
+    captured = capsys.readouterr()
+    assert "Key CELESTO_API_KEY not found in .env" not in captured.out
+    assert "Key CELESTO_API_KEY not found in .env" not in captured.err
 
 
 def test_get_api_key_prefers_explicit_value_over_saved_key(monkeypatch, tmp_path):
