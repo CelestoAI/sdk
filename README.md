@@ -5,20 +5,22 @@
 [![Python](https://img.shields.io/pypi/pyversions/celesto.svg)](https://pypi.org/project/celesto/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Celesto runs AI agents and harnesses in a cloud computer. A harness is the code
-that starts, tests, or supervises an agent. They can run commands, write files,
-and use tools without touching your machine.
+Celesto runs AI agents and harnesses in a cloud computer. An AI agent is
+software that can plan and run tasks. A harness is the code that starts, tests,
+or supervises an agent. They can run commands, write files, and use tools
+without touching your machine.
 
 Use Celesto when you want to:
 
 - Run an AI agent or harness in a clean computer.
 - Run shell commands from Python, JavaScript, TypeScript, or the command line.
 - Keep agent work separate from your laptop, server, or production system.
-- Manage the full computer lifecycle: create, list, run commands, stop, start,
-  and delete.
+- Manage a computer from start to finish: create, list, run commands, stop,
+  start, and delete.
 
-This README covers the Python SDK and CLI. The JavaScript and TypeScript SDK is
-also available as [`@celestoai/sdk`](./js/README.md).
+This README covers the Python SDK, which is a code package, and the CLI, which
+is the `celesto` command. The JavaScript and TypeScript SDK is also available as
+[`@celestoai/sdk`](./js/README.md).
 
 ## Install
 
@@ -85,26 +87,53 @@ To pass the key directly instead of using `CELESTO_API_KEY`:
 from celesto import Celesto
 
 with Celesto(api_key="your-api-key") as client:
-    templates = client.computers.list_templates()
-    print(templates[0]["id"])
+    result = client.computers.list()
+    print(result["count"])
 ```
 
 ## Manage Computers from the CLI
 
-Run this in a macOS or Linux shell after `celesto auth login`.
+Run these commands in a macOS or Linux shell after `celesto auth login`. The
+first command creates a computer and saves its generated name in
+`COMPUTER_NAME`. It uses Python 3 to read the JSON output.
 
 ```bash
-COMPUTER_NAME=$(celesto computer create --template coding-agent --json | python3 -c 'import json, sys; print(json.load(sys.stdin)["name"])')
+COMPUTER_NAME=$(
+  celesto computer create --template coding-agent --json |
+  python3 -c 'import json, sys; print(json.load(sys.stdin)["name"])'
+)
+```
+
+Run a command in that computer:
+
+```bash
 celesto computer run "$COMPUTER_NAME" "uname -a"
+```
+
+Delete the computer when you are done:
+
+```bash
 celesto computer delete --force "$COMPUTER_NAME"
 ```
 
-To open an interactive terminal, create a computer and connect to it. After you
-exit the terminal with `Ctrl+]`, delete the computer.
+To open an interactive terminal, create a computer and save its name:
 
 ```bash
-COMPUTER_NAME=$(celesto computer create --template coding-agent --json | python3 -c 'import json, sys; print(json.load(sys.stdin)["name"])')
+COMPUTER_NAME=$(
+  celesto computer create --template coding-agent --json |
+  python3 -c 'import json, sys; print(json.load(sys.stdin)["name"])'
+)
+```
+
+Connect to it:
+
+```bash
 celesto computer ssh "$COMPUTER_NAME"
+```
+
+Press `Ctrl+]` to exit the terminal, then delete the computer:
+
+```bash
 celesto computer delete --force "$COMPUTER_NAME"
 ```
 
@@ -188,6 +217,9 @@ with Celesto() as client:
 
 ### List, Stop, Start, and Delete
 
+`computer_id` can be the ID returned by `client.computers.create()`, such as
+`computer["id"]`, or a computer name shown by `celesto computer list`.
+
 | Method | What it does |
 | --- | --- |
 | `client.computers.list()` | List computers in your account |
@@ -212,7 +244,8 @@ with Celesto() as client:
 | `celesto computer start NAME` | Start a stopped computer |
 | `celesto computer delete [--force] NAME` | Delete a computer |
 
-Most computer commands support `--json` for scripts and automation:
+Most computer commands support `--json`, which prints structured data for
+scripts and automation:
 
 ```bash
 celesto computer list --json
@@ -238,10 +271,22 @@ advanced APIs.
 OpenAI agents can use Celesto as their working computer. This lets the agent
 read files, run commands, and create artifacts in a separate place.
 
+A sandbox is a separate computer where an agent can work. A session is one
+running connection to that computer.
+
 Install the optional dependencies:
 
 ```bash
 pip install "celesto[openai-agents]"
+```
+
+Set both API keys before running the example. Celesto uses `CELESTO_API_KEY` to
+create the computer. The OpenAI Agents SDK uses `OPENAI_API_KEY` to run the
+agent.
+
+```bash
+export CELESTO_API_KEY="your-celesto-api-key"
+export OPENAI_API_KEY="your-openai-api-key"
 ```
 
 Then create a sandbox session for the agent:
@@ -285,7 +330,8 @@ asyncio.run(main())
 ```
 
 For local sandbox runs, use `SmolVMSandboxClient` and
-`SmolVMSandboxClientOptions` from `celesto.integrations.openai_agents`.
+`SmolVMSandboxClientOptions` from `celesto.integrations.openai_agents`. SmolVM
+is a local tool for running a separate sandbox on your own machine.
 
 ## Handle Errors in Python
 
@@ -319,7 +365,6 @@ uv run ruff format .
 ## Links
 
 - [Documentation](https://docs.celesto.ai/celesto-sdk)
-- [JavaScript and TypeScript SDK](./js/README.md)
 - [Celesto Platform](https://celesto.ai)
 - [GitHub Repository](https://github.com/CelestoAI/sdk)
 
