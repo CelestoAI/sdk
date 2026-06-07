@@ -106,10 +106,10 @@ const toSandboxTemplateInfo = (payload: SandboxTemplateInfoWire): SandboxTemplat
 
 const buildCreateComputerBody = (params: CreateComputerParams): Record<string, unknown> => {
   if (params.cpus !== undefined && params.vcpus !== undefined && params.cpus !== params.vcpus) {
-    throw new Error("Pass either cpus or vcpus, not both.");
+    throw new Error("cpus and vcpus must have the same value when both are provided.");
   }
   if (params.memory !== undefined && params.ramMb !== undefined && params.memory !== params.ramMb) {
-    throw new Error("Pass either memory or ramMb, not both.");
+    throw new Error("memory and ramMb must have the same value when both are provided.");
   }
 
   const body: Record<string, unknown> = {};

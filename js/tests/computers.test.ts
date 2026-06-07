@@ -122,11 +122,11 @@ describe("ComputersClient", () => {
 
     await assert.rejects(
       () => client.create({ cpus: 1, vcpus: 2 }),
-      /cpus or vcpus/i,
+      /cpus and vcpus must have the same value/i,
     );
     await assert.rejects(
       () => client.create({ memory: 1024, ramMb: 2048 }),
-      /memory or ramMb/i,
+      /memory and ramMb must have the same value/i,
     );
   });
 

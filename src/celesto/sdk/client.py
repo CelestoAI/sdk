@@ -833,9 +833,13 @@ class Computers(_BaseClient):
             Computer info dict with id, status, resources, template, etc.
         """
         if cpus is not None and vcpus is not None and cpus != vcpus:
-            raise CelestoValidationError("Pass either cpus or vcpus, not both.")
+            raise CelestoValidationError(
+                "cpus and vcpus must have the same value when both are provided."
+            )
         if memory is not None and ram_mb is not None and memory != ram_mb:
-            raise CelestoValidationError("Pass either memory or ram_mb, not both.")
+            raise CelestoValidationError(
+                "memory and ram_mb must have the same value when both are provided."
+            )
 
         resolved_vcpus = vcpus if vcpus is not None else cpus
         resolved_ram_mb = ram_mb if ram_mb is not None else memory

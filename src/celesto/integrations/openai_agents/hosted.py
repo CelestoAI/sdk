@@ -7,6 +7,7 @@ Use this module when you want Celesto to create the computer for an OpenAI
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from contextlib import suppress
 from typing import Any, Literal
@@ -37,6 +38,8 @@ class CelestoSandboxClientOptions(BaseSandboxClientOptions):
     image: str | None = None
     template_id: str | None = "coding-agent"
     template_version: str | None = None
+    start_timeout_seconds: float = 120
+    start_poll_interval_seconds: float = 2
     delete_on_close: bool | None = None
 
 
@@ -51,6 +54,8 @@ class CelestoSandboxSessionState(SandboxSessionState):
     image: str | None = None
     template_id: str | None = "coding-agent"
     template_version: str | None = None
+    start_timeout_seconds: float = 120
+    start_poll_interval_seconds: float = 2
     delete_on_close: bool = True
 
 
@@ -74,6 +79,45 @@ class CelestoSandboxSession(CommandBackedSession):
     ) -> "CelestoSandboxSession":
         return cls(state=state, client=client)
 
+    async def _wait_for_running(self) -> None:
+        if self.state.computer_id is None:
+            return
+
+        deadline = time.monotonic() + self.state.start_timeout_seconds
+        delay = max(0.25, self.state.start_poll_interval_seconds)
+        last_status: str | None = None
+        last_error: str | None = None
+
+        while time.monotonic() < deadline:
+            try:
+                info = await asyncio.to_thread(
+                    self._client.computers.get,
+                    self.state.computer_id,
+                )
+            except Exception as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+                await asyncio.sleep(delay)
+                delay = min(delay * 1.5, 5)
+                continue
+
+            last_status = str(info.get("status"))
+            last_error = info.get("last_error")
+            if last_status == "running":
+                return
+            if last_status == "error":
+                raise RuntimeError(
+                    f"Celesto computer {self.state.computer_id} failed to start"
+                    f": {last_error or 'status=error'}"
+                )
+
+            await asyncio.sleep(delay)
+
+        detail = last_error or f"last status was {last_status or 'unknown'}"
+        raise RuntimeError(
+            f"Celesto computer {self.state.computer_id} did not reach running "
+            f"within {self.state.start_timeout_seconds:g}s ({detail})."
+        )
+
     async def _ensure_backend_started(self) -> None:
         if self.state.computer_id is None:
             created = await asyncio.to_thread(
@@ -86,6 +130,8 @@ class CelestoSandboxSession(CommandBackedSession):
                 template_version=self.state.template_version,
             )
             self.state.computer_id = created["id"]
+            if created.get("status") != "running":
+                await self._wait_for_running()
             return
 
         info = await asyncio.to_thread(
@@ -95,6 +141,9 @@ class CelestoSandboxSession(CommandBackedSession):
             await asyncio.to_thread(
                 self._client.computers.start, self.state.computer_id
             )
+            await self._wait_for_running()
+        elif info.get("status") != "running":
+            await self._wait_for_running()
 
     async def _shutdown_backend(self) -> None:
         if self.state.computer_id is None:
@@ -172,6 +221,8 @@ class CelestoSandboxClient(BaseSandboxClient[CelestoSandboxClientOptions | None]
             image=resolved.image,
             template_id=resolved.template_id,
             template_version=resolved.template_version,
+            start_timeout_seconds=resolved.start_timeout_seconds,
+            start_poll_interval_seconds=resolved.start_poll_interval_seconds,
             delete_on_close=delete_on_close,
         )
         inner = CelestoSandboxSession.from_state(state, client=self._client)

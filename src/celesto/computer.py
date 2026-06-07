@@ -56,6 +56,18 @@ def _format_memory(mb: int) -> str:
     return f"{mb} MB"
 
 
+def _format_optional_memory(value: object) -> str:
+    if isinstance(value, int):
+        return _format_memory(value)
+    return "N/A"
+
+
+def _format_optional_text(value: object) -> str:
+    if isinstance(value, str) and value:
+        return value
+    return "N/A"
+
+
 def _print_json(data: object) -> None:
     """Print JSON to stdout (no Rich formatting)."""
     sys.stdout.write(json.dumps(data, indent=2, default=str) + "\n")
@@ -118,9 +130,9 @@ def create_computer(
     console.print(f"  ID:     [dim]{cid}[/dim]")
     console.print(f"  Status: [{color}]{status}[/{color}]")
     console.print(f"  CPUs:   {result.get('vcpus')}")
-    console.print(f"  Memory: {_format_memory(result.get('ram_mb', 0))}")
-    console.print(f"  Disk:   {_format_memory(result.get('disk_size_mb', 0))}")
-    console.print(f"  Template: {result.get('template_id', 'scratch')}")
+    console.print(f"  Memory: {_format_optional_memory(result.get('ram_mb'))}")
+    console.print(f"  Disk:   {_format_optional_memory(result.get('disk_size_mb'))}")
+    console.print(f"  Template: {_format_optional_text(result.get('template_id'))}")
     console.print()
     console.print(f"[dim]Connect with:[/dim] celesto computer ssh {cname}")
 
@@ -163,8 +175,8 @@ def list_computers(
             f"[{color}]{c['status']}[/{color}]",
             str(c["vcpus"]),
             _format_memory(c["ram_mb"]),
-            _format_memory(c.get("disk_size_mb", 0)),
-            c.get("template_id", "scratch"),
+            _format_optional_memory(c.get("disk_size_mb")),
+            _format_optional_text(c.get("template_id")),
             c.get("created_at", "")[:19],
         )
 
