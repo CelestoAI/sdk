@@ -908,7 +908,7 @@ class Computers(_BaseClient):
             json_body={"port": port},
         )
 
-    def list_published_ports(self, computer_id: str) -> list[dict[str, Any]]:
+    def list_published_ports(self, computer_id: str) -> List[dict[str, Any]]:
         """List active published ports for a computer.
 
         Args:
