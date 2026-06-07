@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import typer
 from rich import print
 
@@ -11,6 +14,28 @@ app = typer.Typer(
 )
 app.add_typer(auth.app, name="auth")
 app.add_typer(computer.app, name="computer")
+
+
+def _run_pip_update() -> None:
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "celesto"],
+        check=True,
+    )
+
+
+@app.command("update")
+def update() -> None:
+    """Update Celesto to the newest version available from pip."""
+    print("Checking for a newer Celesto version...")
+    try:
+        _run_pip_update()
+    except subprocess.CalledProcessError:
+        print(
+            "[red]Could not update Celesto. "
+            "Run python -m pip install --upgrade celesto.[/red]"
+        )
+        raise typer.Exit(1) from None
+    print("Celesto is up to date or has been updated.")
 
 
 @app.callback(invoke_without_command=True)
