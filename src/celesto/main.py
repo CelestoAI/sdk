@@ -46,7 +46,7 @@ def _run_update() -> None:
         )
 
     print("pip is not installed in this environment. Using uv instead...")
-    subprocess.run(
+    subprocess.run(  # noqa: S603
         [uv, "pip", "install", "--python", sys.executable, "--upgrade", "celesto"],
         check=True,
     )
