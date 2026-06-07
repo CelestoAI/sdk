@@ -795,7 +795,7 @@ class Computers(_BaseClient):
 
     Example:
         >>> with Celesto() as client:
-        ...     computer = client.computers.create(template_id="coding-agent")
+        ...     computer = client.computers.create()
         ...     result = client.computers.exec(computer["id"], "uname -a")
         ...     print(result["stdout"])
         ...     client.computers.delete(computer["id"])
@@ -815,8 +815,8 @@ class Computers(_BaseClient):
     ) -> dict[str, Any]:
         """Create a new sandboxed computer.
 
-        Resource fields are optional. If omitted, the backend applies the
-        selected template's defaults.
+        Resource fields are optional. If omitted, Celesto creates a scratch
+        computer with the default size.
 
         Args:
             cpus: Number of virtual CPUs (1-16). Alias for vcpus.
@@ -826,7 +826,7 @@ class Computers(_BaseClient):
             disk_size_mb: Disk size in MB (512-51200).
             image: Legacy OS image selector.
             template_id: Sandbox template id, such as "scratch" or
-                "coding-agent".
+                "coding-agent". Use this when you want preinstalled tools.
             template_version: Optional immutable template version.
 
         Returns:

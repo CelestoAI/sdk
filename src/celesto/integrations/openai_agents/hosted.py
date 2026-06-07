@@ -36,7 +36,7 @@ class CelestoSandboxClientOptions(BaseSandboxClientOptions):
     memory: int | None = None
     disk_size_mb: int | None = None
     image: str | None = None
-    template_id: str | None = "coding-agent"
+    template_id: str | None = None
     template_version: str | None = None
     start_timeout_seconds: float = 120
     start_poll_interval_seconds: float = 2
@@ -52,7 +52,7 @@ class CelestoSandboxSessionState(SandboxSessionState):
     memory: int | None = None
     disk_size_mb: int | None = None
     image: str | None = None
-    template_id: str | None = "coding-agent"
+    template_id: str | None = None
     template_version: str | None = None
     start_timeout_seconds: float = 120
     start_poll_interval_seconds: float = 2

@@ -61,17 +61,15 @@ code does not read that saved CLI key; it reads `CELESTO_API_KEY` or the
 
 ## Create a Computer from Python
 
-This example creates a computer from the `coding-agent` template, runs one
-command, prints the output, and deletes the computer.
-
-A template is a ready-made setup. The `coding-agent` template includes common
-tools for coding tasks.
+This example creates a minimal Ubuntu computer, runs one command, prints the
+output, and deletes the computer. Celesto uses the `scratch` template by
+default.
 
 ```python
 from celesto import Celesto
 
 with Celesto() as client:
-    computer = client.computers.create(template_id="coding-agent")
+    computer = client.computers.create()
     try:
         print(f"Computer ready: {computer['name']}")
 
@@ -99,7 +97,7 @@ first command creates a computer and saves its generated name in
 
 ```bash
 COMPUTER_NAME=$(
-  celesto computer create --template coding-agent --json |
+  celesto computer create --json |
   python3 -c 'import json, sys; print(json.load(sys.stdin)["name"])'
 )
 ```
@@ -120,7 +118,7 @@ To open an interactive terminal, create a computer and save its name:
 
 ```bash
 COMPUTER_NAME=$(
-  celesto computer create --template coding-agent --json |
+  celesto computer create --json |
   python3 -c 'import json, sys; print(json.load(sys.stdin)["name"])'
 )
 ```
@@ -148,7 +146,7 @@ import { Celesto } from "@celestoai/sdk";
 
 const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
 
-const computer = await celesto.computers.create({ templateId: "coding-agent" });
+const computer = await celesto.computers.create();
 try {
   console.log(`Computer ready: ${computer.name}`);
 
@@ -173,7 +171,6 @@ from celesto import Celesto
 
 with Celesto() as client:
     computer = client.computers.create(
-        template_id="coding-agent",
         cpus=2,
         memory=2048,
         disk_size_mb=15360,
@@ -184,9 +181,15 @@ with Celesto() as client:
         client.computers.delete(computer["id"])
 ```
 
-Omit CPU, memory, or disk fields to use the selected template defaults.
+Omit CPU, memory, or disk fields to use the default size.
 
-### List Templates
+### Templates
+
+By default, Celesto uses `scratch`, a minimal Ubuntu computer. Use a template
+when you want a computer that already has extra tools installed. For example,
+`coding-agent` includes common tools for coding tasks.
+
+List available templates:
 
 ```python
 from celesto import Celesto
@@ -197,15 +200,26 @@ with Celesto() as client:
         print(template["id"], template["default_ram_mb"])
 ```
 
+Create a computer from a template:
+
+```python
+from celesto import Celesto
+
+with Celesto() as client:
+    computer = client.computers.create(template_id="coding-agent")
+    try:
+        print(computer["name"])
+    finally:
+        client.computers.delete(computer["id"])
+```
+
 ### Run a Command
 
 ```python
 from celesto import Celesto
 
 with Celesto() as client:
-    computer = client.computers.create(
-        template_id="coding-agent",
-    )
+    computer = client.computers.create()
     try:
         result = client.computers.exec(computer["id"], "ls -la", timeout=60)
         print(result["exit_code"])
@@ -235,8 +249,8 @@ with Celesto() as client:
 | `celesto auth login` | Save your API key for CLI commands |
 | `celesto auth status` | Check whether an API key is saved |
 | `celesto auth logout` | Remove your saved API key |
-| `celesto computer create [--template ID] [--cpus N] [--memory MB] [--disk-size-mb MB]` | Create a computer |
-| `celesto computer templates` | List available computer templates |
+| `celesto computer create [--cpus N] [--memory MB] [--disk-size-mb MB] [--template ID]` | Create a computer |
+| `celesto computer templates` | List templates with preinstalled tools |
 | `celesto computer list` | List your computers |
 | `celesto computer run NAME "command"` | Run a command on a computer |
 | `celesto computer ssh NAME` | Open an interactive terminal |
@@ -250,7 +264,7 @@ scripts and automation:
 ```bash
 celesto computer list --json
 celesto computer templates --json
-celesto computer create --template coding-agent --disk-size-mb 15360 --json
+celesto computer create --disk-size-mb 15360 --json
 ```
 
 `celesto computer ssh` is interactive and does not support JSON output.
@@ -297,10 +311,7 @@ import asyncio
 from agents import Runner
 from agents.run import RunConfig
 from agents.sandbox import SandboxAgent, SandboxRunConfig
-from celesto.integrations.openai_agents import (
-    CelestoSandboxClient,
-    CelestoSandboxClientOptions,
-)
+from celesto.integrations.openai_agents import CelestoSandboxClient
 
 
 async def main() -> None:
@@ -310,9 +321,7 @@ async def main() -> None:
     )
 
     client = CelestoSandboxClient()
-    session = await client.create(
-        options=CelestoSandboxClientOptions(template_id="coding-agent")
-    )
+    session = await client.create()
 
     try:
         async with session:
@@ -328,6 +337,11 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+If your agent needs common coding tools preinstalled, pass
+`options=CelestoSandboxClientOptions(template_id="coding-agent")` when you call
+`client.create()`. Import `CelestoSandboxClientOptions` from
+`celesto.integrations.openai_agents`.
 
 For local sandbox runs, use `SmolVMSandboxClient` and
 `SmolVMSandboxClientOptions` from `celesto.integrations.openai_agents`. SmolVM
