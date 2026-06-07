@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import json
+import os
 from urllib.parse import urlparse
 
 from typer.testing import CliRunner
 
 from celesto import computer
+
+
+def test_terminal_dimensions_return_rows_then_columns(monkeypatch):
+    monkeypatch.setattr(
+        computer.os,
+        "get_terminal_size",
+        lambda: os.terminal_size((120, 30)),
+    )
+
+    assert computer._terminal_dimensions() == (30, 120)
 
 
 class _FakeComputers:
