@@ -795,7 +795,7 @@ class Computers(_BaseClient):
 
     Example:
         >>> with Celesto() as client:
-        ...     computer = client.computers.create(cpus=2, memory=2048)
+        ...     computer = client.computers.create(template_id="coding-agent")
         ...     result = client.computers.exec(computer["id"], "uname -a")
         ...     print(result["stdout"])
         ...     client.computers.delete(computer["id"])
@@ -804,25 +804,70 @@ class Computers(_BaseClient):
     def create(
         self,
         *,
-        cpus: int = 1,
-        memory: int = 1024,
-        image: str = "ubuntu-desktop-24.04",
+        cpus: int | None = None,
+        memory: int | None = None,
+        vcpus: int | None = None,
+        ram_mb: int | None = None,
+        disk_size_mb: int | None = None,
+        image: str | None = None,
+        template_id: str | None = None,
+        template_version: str | None = None,
     ) -> dict[str, Any]:
         """Create a new sandboxed computer.
 
+        Resource fields are optional. If omitted, the backend applies the
+        selected template's defaults.
+
         Args:
-            cpus: Number of virtual CPUs (1-16).
-            memory: Memory in MB (512-32768).
-            image: OS image name.
+            cpus: Number of virtual CPUs (1-16). Alias for vcpus.
+            memory: Memory in MB (512-32768). Alias for ram_mb.
+            vcpus: Number of virtual CPUs (1-16).
+            ram_mb: Memory in MB (512-32768).
+            disk_size_mb: Disk size in MB (512-51200).
+            image: Legacy OS image selector.
+            template_id: Sandbox template id, such as "scratch" or
+                "coding-agent".
+            template_version: Optional immutable template version.
 
         Returns:
-            Computer info dict with id, status, cpus, memory, etc.
+            Computer info dict with id, status, resources, template, etc.
         """
+        if cpus is not None and vcpus is not None and cpus != vcpus:
+            raise CelestoValidationError("Pass either cpus or vcpus, not both.")
+        if memory is not None and ram_mb is not None and memory != ram_mb:
+            raise CelestoValidationError("Pass either memory or ram_mb, not both.")
+
+        resolved_vcpus = vcpus if vcpus is not None else cpus
+        resolved_ram_mb = ram_mb if ram_mb is not None else memory
+
+        payload: dict[str, Any] = {}
+        if resolved_vcpus is not None:
+            payload["vcpus"] = resolved_vcpus
+        if resolved_ram_mb is not None:
+            payload["ram_mb"] = resolved_ram_mb
+        if disk_size_mb is not None:
+            payload["disk_size_mb"] = disk_size_mb
+        if image is not None:
+            payload["image"] = image
+        if template_id is not None:
+            payload["template_id"] = template_id
+        if template_version is not None:
+            payload["template_version"] = template_version
+
         return self._request(
             "POST",
             "/computers",
-            json_body={"vcpus": cpus, "ram_mb": memory, "image": image},
+            json_body=payload,
         )
+
+    def list_templates(self) -> list[dict[str, Any]]:
+        """List available sandbox templates.
+
+        Returns:
+            List of template dicts with id, display_name, description, default
+            resources, version, and experimental fields.
+        """
+        return self._request("GET", "/computers/templates")
 
     def list(self) -> dict[str, Any]:
         """List all computers in the current organization.

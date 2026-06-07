@@ -7,8 +7,6 @@ These tests verify that .celestoignore follows the gitignore specification:
 4. Patterns with # in the middle should match literally
 """
 
-import tarfile
-import tempfile
 from pathlib import Path
 
 import pytest

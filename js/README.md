@@ -22,7 +22,7 @@ const celesto = new Celesto({
 });
 
 // Computers
-const computer = await celesto.computers.create({ cpus: 2, memory: 2048 });
+const computer = await celesto.computers.create({ templateId: "coding-agent" });
 const result = await celesto.computers.exec(computer.id, "uname -a");
 console.log(result.stdout);
 await celesto.computers.delete(computer.id);
@@ -34,9 +34,10 @@ await celesto.computers.delete(computer.id);
 
 ```ts
 const computer = await celesto.computers.create({
+  templateId: "coding-agent",
   cpus: 2,
   memory: 2048,
-  image: "ubuntu-desktop-24.04",
+  diskSizeMb: 15360,
 });
 
 await celesto.computers.stop(computer.id);
@@ -44,6 +45,15 @@ await celesto.computers.start(computer.id);
 await celesto.computers.delete(computer.id);
 
 const { computers, count } = await celesto.computers.list();
+```
+
+Omit CPU, memory, or disk fields to use the selected template defaults.
+
+```ts
+const templates = await celesto.computers.listTemplates();
+for (const template of templates) {
+  console.log(template.id, template.defaultRamMb);
+}
 ```
 
 ### Running commands

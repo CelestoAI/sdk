@@ -48,7 +48,7 @@ const makeConfig = (fetchMock: typeof fetch): ClientConfig => ({
 });
 
 describe("ComputersClient", () => {
-  it("create() sends vcpus/ram_mb wire fields and unwraps snake_case response", async () => {
+  it("create() sends explicit resource/template fields and unwraps snake_case response", async () => {
     const { fetch, calls } = makeFetchMock(() => ({
       status: 201,
       body: {
@@ -57,7 +57,10 @@ describe("ComputersClient", () => {
         status: "creating",
         vcpus: 2,
         ram_mb: 2048,
+        disk_size_mb: 15360,
         image: "ubuntu-desktop-24.04",
+        template_id: "coding-agent",
+        template_version: "latest",
         created_at: "2026-04-16T00:00:00Z",
         last_error: null,
         stopped_at: null,
@@ -65,7 +68,13 @@ describe("ComputersClient", () => {
     }));
     const client = new ComputersClient(makeConfig(fetch));
 
-    const result = await client.create({ cpus: 2, memory: 2048 });
+    const result = await client.create({
+      cpus: 2,
+      memory: 2048,
+      diskSizeMb: 15360,
+      templateId: "coding-agent",
+      templateVersion: "latest",
+    });
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0]!.method, "POST");
@@ -73,15 +82,20 @@ describe("ComputersClient", () => {
     assert.deepEqual(calls[0]!.body, {
       vcpus: 2,
       ram_mb: 2048,
-      image: "ubuntu-desktop-24.04",
+      disk_size_mb: 15360,
+      template_id: "coding-agent",
+      template_version: "latest",
     });
     assert.equal(calls[0]!.headers["authorization"], "Bearer test-token");
     assert.equal(result.id, "cmp_abc");
     assert.equal(result.ramMb, 2048);
+    assert.equal(result.diskSizeMb, 15360);
+    assert.equal(result.templateId, "coding-agent");
+    assert.equal(result.templateVersion, "latest");
     assert.equal(result.lastError, null);
   });
 
-  it("create() applies defaults when no params are provided", async () => {
+  it("create() leaves defaults to the backend when no params are provided", async () => {
     const { fetch, calls } = makeFetchMock(() => ({
       status: 201,
       body: {
@@ -89,8 +103,10 @@ describe("ComputersClient", () => {
         name: "d",
         status: "creating",
         vcpus: 1,
-        ram_mb: 1024,
+        ram_mb: 512,
+        disk_size_mb: 7168,
         image: "ubuntu-desktop-24.04",
+        template_id: "scratch",
         created_at: "2026-04-16T00:00:00Z",
       },
     }));
@@ -98,11 +114,20 @@ describe("ComputersClient", () => {
 
     await client.create();
 
-    assert.deepEqual(calls[0]!.body, {
-      vcpus: 1,
-      ram_mb: 1024,
-      image: "ubuntu-desktop-24.04",
-    });
+    assert.deepEqual(calls[0]!.body, {});
+  });
+
+  it("create() rejects conflicting aliases", async () => {
+    const client = new ComputersClient(makeConfig(async () => new Response()));
+
+    await assert.rejects(
+      () => client.create({ cpus: 1, vcpus: 2 }),
+      /cpus or vcpus/i,
+    );
+    await assert.rejects(
+      () => client.create({ memory: 1024, ramMb: 2048 }),
+      /memory or ramMb/i,
+    );
   });
 
   it("list() maps each computer through the wire transform", async () => {
@@ -116,7 +141,9 @@ describe("ComputersClient", () => {
             status: "running",
             vcpus: 1,
             ram_mb: 1024,
+            disk_size_mb: 7168,
             image: "ubuntu-desktop-24.04",
+            template_id: "scratch",
             created_at: "2026-04-16T00:00:00Z",
             connection: { ssh: "user@host", access_url: "https://a" },
           },
@@ -126,7 +153,9 @@ describe("ComputersClient", () => {
             status: "stopped",
             vcpus: 4,
             ram_mb: 8192,
+            disk_size_mb: 15360,
             image: "ubuntu-desktop-24.04",
+            template_id: "browser-agent",
             created_at: "2026-04-16T00:00:00Z",
             stopped_at: "2026-04-16T01:00:00Z",
           },
@@ -142,7 +171,36 @@ describe("ComputersClient", () => {
     assert.equal(result.computers.length, 2);
     assert.equal(result.computers[0]!.connection?.ssh, "user@host");
     assert.equal(result.computers[0]!.connection?.accessUrl, "https://a");
+    assert.equal(result.computers[1]!.diskSizeMb, 15360);
+    assert.equal(result.computers[1]!.templateId, "browser-agent");
     assert.equal(result.computers[1]!.stoppedAt, "2026-04-16T01:00:00Z");
+  });
+
+  it("listTemplates() maps sandbox template metadata", async () => {
+    const { fetch, calls } = makeFetchMock(() => ({
+      status: 200,
+      body: [
+        {
+          id: "coding-agent",
+          display_name: "Coding Agent",
+          description: "Ready-to-code sandbox",
+          default_vcpus: 1,
+          default_ram_mb: 1024,
+          default_disk_size_mb: 15360,
+          version: "latest",
+          experimental: false,
+        },
+      ],
+    }));
+    const client = new ComputersClient(makeConfig(fetch));
+
+    const templates = await client.listTemplates();
+
+    assert.equal(calls[0]!.method, "GET");
+    assert.equal(calls[0]!.url, "https://api.example.test/v1/computers/templates");
+    assert.equal(templates[0]!.id, "coding-agent");
+    assert.equal(templates[0]!.displayName, "Coding Agent");
+    assert.equal(templates[0]!.defaultDiskSizeMb, 15360);
   });
 
   it("get() resolves name to ID via /v1/computers/{name}", async () => {
@@ -154,7 +212,9 @@ describe("ComputersClient", () => {
         status: "running",
         vcpus: 1,
         ram_mb: 1024,
+        disk_size_mb: 7168,
         image: "ubuntu-desktop-24.04",
+        template_id: "scratch",
         created_at: "2026-04-16T00:00:00Z",
       },
     }));
@@ -193,7 +253,9 @@ describe("ComputersClient", () => {
           status: "stopping",
           vcpus: 1,
           ram_mb: 1024,
+          disk_size_mb: 7168,
           image: "ubuntu-desktop-24.04",
+          template_id: "scratch",
           created_at: "2026-04-16T00:00:00Z",
         },
       };
@@ -221,7 +283,9 @@ describe("ComputersClient", () => {
     await assert.rejects(
       () => client.get("cmp_missing"),
       (err: unknown) => {
-        assert.ok(err instanceof CelestoApiError);
+        if (!(err instanceof CelestoApiError)) {
+          return false;
+        }
         assert.ok(err instanceof CelestoError, "CelestoApiError should extend CelestoError");
         assert.equal(err.status, 404);
         assert.equal(err.message, "Computer not found");
@@ -239,7 +303,9 @@ describe("ComputersClient", () => {
     await assert.rejects(
       () => client.list(),
       (err: unknown) => {
-        assert.ok(err instanceof CelestoNetworkError);
+        if (!(err instanceof CelestoNetworkError)) {
+          return false;
+        }
         assert.ok(err instanceof CelestoError, "CelestoNetworkError should extend CelestoError");
         assert.match(err.message, /fetch failed/);
         return true;
@@ -256,7 +322,9 @@ describe("ComputersClient", () => {
         status: "running",
         vcpus: 1,
         ram_mb: 1024,
+        disk_size_mb: 7168,
         image: "ubuntu-desktop-24.04",
+        template_id: "scratch",
         created_at: "2026-04-16T00:00:00Z",
       },
     }));
@@ -278,7 +346,9 @@ describe("ComputersClient", () => {
         status: "running",
         vcpus: 1,
         ram_mb: 1024,
+        disk_size_mb: 7168,
         image: "ubuntu-desktop-24.04",
+        template_id: "scratch",
         created_at: "2026-04-16T00:00:00Z",
       },
     }));
