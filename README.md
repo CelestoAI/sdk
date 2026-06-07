@@ -137,6 +137,9 @@ when you want the same agent flow to run on a local SmolVM sandbox.
 
 ## Computers API
 
+Templates are ready-made computer setups. Choose one when you want a computer
+that already has the tools your agent needs.
+
 ### Create
 
 ```python
@@ -186,7 +189,7 @@ for vm in result["computers"]:
 | Command | Description |
 |---|---|
 | `celesto computer create [--template ID] [--cpus N] [--memory MB] [--disk-size-mb MB]` | Create a computer |
-| `celesto computer templates` | List sandbox templates |
+| `celesto computer templates` | List computer templates |
 | `celesto computer list` | List all computers |
 | `celesto computer run <name> "command"` | Execute a command |
 | `celesto computer ssh <name>` | Interactive shell |

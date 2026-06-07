@@ -86,7 +86,6 @@ class CelestoSandboxSession(CommandBackedSession):
         deadline = time.monotonic() + self.state.start_timeout_seconds
         delay = max(0.25, self.state.start_poll_interval_seconds)
         last_status: str | None = None
-        last_error: str | None = None
 
         while time.monotonic() < deadline:
             try:
@@ -94,28 +93,25 @@ class CelestoSandboxSession(CommandBackedSession):
                     self._client.computers.get,
                     self.state.computer_id,
                 )
-            except Exception as exc:
-                last_error = f"{type(exc).__name__}: {exc}"
+            except Exception:
                 await asyncio.sleep(delay)
                 delay = min(delay * 1.5, 5)
                 continue
 
             last_status = str(info.get("status"))
-            last_error = info.get("last_error")
             if last_status == "running":
                 return
             if last_status == "error":
                 raise RuntimeError(
-                    f"Celesto computer {self.state.computer_id} failed to start"
-                    f": {last_error or 'status=error'}"
+                    f"Computer {self.state.computer_id} could not start. "
+                    f"Delete it with client.computers.delete('{self.state.computer_id}') and create a new one."
                 )
 
             await asyncio.sleep(delay)
 
-        detail = last_error or f"last status was {last_status or 'unknown'}"
         raise RuntimeError(
-            f"Celesto computer {self.state.computer_id} did not reach running "
-            f"within {self.state.start_timeout_seconds:g}s ({detail})."
+            f"Computer {self.state.computer_id} is not ready yet. "
+            f"Check it with client.computers.get('{self.state.computer_id}') and try again."
         )
 
     async def _ensure_backend_started(self) -> None:

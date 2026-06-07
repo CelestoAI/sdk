@@ -188,7 +188,7 @@ def list_templates(
     as_json: JsonOption = False,
     api_key: ApiKeyOption = None,
 ):
-    """List available sandbox templates."""
+    """List ready-made computer setups."""
     with _get_client(api_key) as client:
         templates = client.computers.list_templates()
 

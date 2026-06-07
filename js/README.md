@@ -1,6 +1,9 @@
 # @celestoai/sdk
 
-Node-only TypeScript SDK for the [Celesto](https://celesto.ai) platform. Covers:
+Use this package to create Celesto computers from Node.js apps. Your code can
+start a computer, run commands in it, and delete it when the work is done.
+
+It includes:
 
 - **Computers** (`/v1/computers`) — create, manage, and interact with sandboxed virtual machines
 - **Gatekeeper** (`/v1/gatekeeper`) — delegated access to user resources
@@ -29,6 +32,9 @@ await celesto.computers.delete(computer.id);
 ```
 
 ## Computers
+
+Templates are ready-made computer setups. Choose one when you want a computer
+that already has the tools your agent needs.
 
 ### Lifecycle
 
