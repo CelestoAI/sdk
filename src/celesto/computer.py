@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Optional
 
@@ -28,6 +29,12 @@ JsonOption = Annotated[
     bool,
     typer.Option("--json", "-j", help="Output as JSON (for machines and AI agents)"),
 ]
+
+
+def _terminal_dimensions() -> tuple[int, int]:
+    """Return terminal size as rows, columns."""
+    size = os.get_terminal_size()
+    return size.lines, size.columns
 
 
 def _get_client(api_key: str | None = None) -> Celesto:
@@ -348,7 +355,6 @@ def ssh_to_computer(
     api_key: ApiKeyOption = None,
 ):
     """Open an interactive terminal session on a computer. Automatically resumes stopped computers."""
-    import os
     import signal
     import termios
     import threading
@@ -393,7 +399,7 @@ def ssh_to_computer(
 
     ws.send(json.dumps({"token": key}))
 
-    rows, cols = os.get_terminal_size()
+    rows, cols = _terminal_dimensions()
     ws.send(json.dumps({"type": "resize", "cols": cols, "rows": rows}))
 
     console.print("[dim]Connected. Press Ctrl+] to disconnect.[/dim]")
@@ -426,7 +432,7 @@ def ssh_to_computer(
     def handle_sigwinch(*_args):
         nonlocal rows, cols
         try:
-            new_rows, new_cols = os.get_terminal_size()
+            new_rows, new_cols = _terminal_dimensions()
             if (new_rows, new_cols) != (rows, cols):
                 rows, cols = new_rows, new_cols
                 ws.send(json.dumps({"type": "resize", "cols": cols, "rows": rows}))
