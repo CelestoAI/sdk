@@ -1,0 +1,4 @@
+interface:
+  display_name: "Celesto Publish GitHub App"
+  short_description: "Run and publish a GitHub app on a Celesto machine."
+  default_prompt: "Create a Celesto coding-agent machine, run this GitHub app, publish port 8000, and give me the verified public URL."
