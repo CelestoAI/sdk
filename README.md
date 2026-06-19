@@ -67,16 +67,16 @@ default.
 
 ```python
 from celesto import Celesto
-
-with Celesto() as client:
-    computer = client.computers.create()
-    try:
-        print(f"Computer ready: {computer['name']}")
-
-        result = client.computers.exec(computer["id"], "uname -a")
-        print(result["stdout"])
-    finally:
-        client.computers.delete(computer["id"])
+ 
+client = Celesto()
+computer = client.computers.create()
+ 
+print(f"Computer ready: {computer['name']}")
+ 
+result = client.computers.exec(computer["id"], "uname -a")
+print(result["stdout"])
+ 
+client.computers.delete(computer["id"])
 ```
 
 To pass the key directly instead of using `CELESTO_API_KEY`:
