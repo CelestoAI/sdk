@@ -10,6 +10,7 @@ from typing import Literal
 
 import keyring
 import typer
+from keyring.errors import KeyringError
 from rich.console import Console
 from typing_extensions import Annotated
 
@@ -141,7 +142,7 @@ def save_api_key(
         )
         _set_credential_store_preference(account, "keyring")
         return "keyring"
-    except Exception:
+    except KeyringError:
         credentials = _load_file_credentials()
         credentials[account] = api_key
         _save_file_credentials(credentials)
@@ -165,7 +166,8 @@ def load_api_key(base_url: str | None = None) -> str | None:
         # Fall back to keyring if file doesn't have it
         try:
             return keyring.get_password(KEYRING_SERVICE, account)
-        except Exception:
+        except KeyringError:
+            # The file preference is already missing; treat keyring failure as no saved key.
             return None
 
     # No preference or keyring preference: try keyring first
@@ -176,7 +178,8 @@ def load_api_key(base_url: str | None = None) -> str | None:
         )
         if saved_api_key is not None:
             return saved_api_key
-    except Exception:
+    except KeyringError:
+        # Missing or unavailable keyring is expected on headless Linux; try file storage next.
         pass
 
     return _load_file_credentials().get(account)
@@ -193,7 +196,8 @@ def delete_api_key(base_url: str | None = None) -> None:
             KEYRING_SERVICE,
             account,
         )
-    except Exception:
+    except KeyringError:
+        # Logout should still remove file credentials even when the OS keyring is unavailable.
         pass
 
     # Delete from file
