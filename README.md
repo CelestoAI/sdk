@@ -57,9 +57,10 @@ celesto auth login
 
 The CLI stores the key in your operating system's secure credential store. On
 Linux machines without a credential store, it saves the key in
-`~/.config/celesto/credentials.json` with user-only file permissions. SDK code
-does not read that saved CLI key; it reads `CELESTO_API_KEY` or the `api_key`
-value you pass to `Celesto`.
+`$XDG_CONFIG_HOME/celesto/credentials.json` when `XDG_CONFIG_HOME` is set, or
+`~/.config/celesto/credentials.json` otherwise, with user-only file
+permissions. SDK code does not read that saved CLI key; it reads
+`CELESTO_API_KEY` or the `api_key` value you pass to `Celesto`.
 
 ## Create a Computer from Python
 

@@ -18,6 +18,7 @@ from .sdk.client import Celesto
 DEFAULT_BASE_URL = "https://api.celesto.ai/v1"
 KEYRING_SERVICE = "celesto"
 CREDENTIALS_FILE_NAME = "credentials.json"
+CREDENTIAL_STORE_PREFERENCE_KEY = "__credential_store_preference__"
 
 app = typer.Typer(help="Sign in and manage saved credentials.")
 console = Console()
@@ -50,6 +51,7 @@ def _credential_file_path() -> Path:
 
 
 def _load_file_credentials() -> dict[str, str]:
+    """Load credentials from file, including the store preference marker."""
     credentials_path = _credential_file_path()
     if not credentials_path.exists():
         return {}
@@ -105,6 +107,26 @@ def _delete_file_credential(account: str) -> None:
         return
 
 
+def _get_credential_store_preference(account: str) -> Literal["keyring", "file"] | None:
+    """Get the preferred credential store for this account."""
+    credentials = _load_file_credentials()
+    pref_key = f"{CREDENTIAL_STORE_PREFERENCE_KEY}:{account}"
+    pref = credentials.get(pref_key)
+    if pref in ("keyring", "file"):
+        return pref
+    return None
+
+
+def _set_credential_store_preference(
+    account: str, store: Literal["keyring", "file"]
+) -> None:
+    """Record which credential store was last used successfully for this account."""
+    credentials = _load_file_credentials()
+    pref_key = f"{CREDENTIAL_STORE_PREFERENCE_KEY}:{account}"
+    credentials[pref_key] = store
+    _save_file_credentials(credentials)
+
+
 def save_api_key(
     api_key: str, base_url: str | None = None
 ) -> Literal["keyring", "file"]:
@@ -117,11 +139,13 @@ def save_api_key(
             account,
             api_key,
         )
+        _set_credential_store_preference(account, "keyring")
         return "keyring"
     except Exception:
         credentials = _load_file_credentials()
         credentials[account] = api_key
         _save_file_credentials(credentials)
+        _set_credential_store_preference(account, "file")
         return "file"
 
 
@@ -129,6 +153,22 @@ def load_api_key(base_url: str | None = None) -> str | None:
     """Load a saved API key for CLI commands."""
     resolved_base_url = _resolve_base_url(base_url)
     account = _credential_account(resolved_base_url)
+
+    # Check which store was last used successfully
+    preference = _get_credential_store_preference(account)
+
+    if preference == "file":
+        # File was last used successfully, try file first
+        file_key = _load_file_credentials().get(account)
+        if file_key is not None:
+            return file_key
+        # Fall back to keyring if file doesn't have it
+        try:
+            return keyring.get_password(KEYRING_SERVICE, account)
+        except Exception:
+            return None
+
+    # No preference or keyring preference: try keyring first
     try:
         saved_api_key = keyring.get_password(
             KEYRING_SERVICE,
@@ -143,9 +183,11 @@ def load_api_key(base_url: str | None = None) -> str | None:
 
 
 def delete_api_key(base_url: str | None = None) -> None:
-    """Delete a saved API key for CLI commands."""
+    """Delete a saved API key from both stores and clear the preference."""
     resolved_base_url = _resolve_base_url(base_url)
     account = _credential_account(resolved_base_url)
+
+    # Delete from keyring
     try:
         keyring.delete_password(
             KEYRING_SERVICE,
@@ -153,7 +195,23 @@ def delete_api_key(base_url: str | None = None) -> None:
         )
     except Exception:
         pass
+
+    # Delete from file
     _delete_file_credential(account)
+
+    # Clear the preference marker
+    credentials = _load_file_credentials()
+    pref_key = f"{CREDENTIAL_STORE_PREFERENCE_KEY}:{account}"
+    if pref_key in credentials:
+        del credentials[pref_key]
+        if credentials:
+            _save_file_credentials(credentials)
+        else:
+            # No more credentials, clean up the file
+            try:
+                _credential_file_path().unlink()
+            except FileNotFoundError:
+                pass
 
 
 def validate_api_key(api_key: str, base_url: str | None = None) -> None:
