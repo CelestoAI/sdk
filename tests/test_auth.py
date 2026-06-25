@@ -9,8 +9,10 @@ from celesto import auth
 from celesto.deployment import _get_api_key
 
 
-def test_auth_helpers_use_base_url_scoped_keyring(monkeypatch):
+def test_auth_helpers_use_base_url_scoped_keyring(monkeypatch, tmp_path):
     calls = []
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
     def fake_set_password(service: str, account: str, password: str) -> None:
         calls.append(("set", service, account, password))
@@ -49,11 +51,13 @@ def test_auth_helpers_fall_back_to_local_credentials_file(monkeypatch, tmp_path)
     store = auth.save_api_key("secret", "https://api.example.test/v1/")
 
     credentials_path = tmp_path / "celesto" / "credentials.json"
+    credentials = json.loads(credentials_path.read_text(encoding="utf-8"))
+    account = "api_key:https://api.example.test/v1"
+
     assert store == "file"
     assert credentials_path.stat().st_mode & 0o777 == 0o600
-    assert json.loads(credentials_path.read_text(encoding="utf-8")) == {
-        "api_key:https://api.example.test/v1": "secret"
-    }
+    assert credentials[account] == "secret"
+    assert credentials[f"{auth.CREDENTIAL_STORE_PREFERENCE_KEY}:{account}"] == "file"
     assert auth.load_api_key("https://api.example.test/v1") == "secret"
 
     auth.delete_api_key("https://api.example.test/v1")
