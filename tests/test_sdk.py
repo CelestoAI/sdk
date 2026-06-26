@@ -62,6 +62,8 @@ def test_computers_create_sends_only_explicit_overrides():
         "disk_size_mb": 15360,
         "template_id": "coding-agent",
     }
+    assert session.calls[0]["timeout"].read == 600
+    assert session.timeout.read == 120
 
 
 def test_computers_create_with_no_args_uses_backend_defaults():
