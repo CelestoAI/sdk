@@ -220,6 +220,19 @@ def test_computer_run_stream_routes_stderr_events_to_stderr(monkeypatch):
     assert result.stderr == "warn\n"
 
 
+def test_computer_run_stream_fails_when_exit_event_is_missing(monkeypatch):
+    runner = CliRunner()
+    fake_client = _FakeClient()
+    fake_client.computers.stream_events = [{"type": "stdout", "data": "partial\n"}]
+    monkeypatch.setattr(computer, "_get_client", lambda api_key=None: fake_client)
+
+    result = runner.invoke(computer.app, ["run", "curie", "partial", "--stream"])
+
+    assert result.exit_code == 1
+    assert result.stdout == "partial\n"
+    assert "ended before the remote exit status" in result.stderr
+
+
 def test_computer_run_rejects_timeout_outside_allowed_range(monkeypatch):
     runner = CliRunner()
     fake_client = _FakeClient()

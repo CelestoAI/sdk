@@ -470,6 +470,7 @@ def run_command(
     with _get_client(api_key) as client:
         if stream:
             exit_code = 0
+            saw_exit = False
             events = _exec_stream_with_resume(
                 client,
                 computer_id,
@@ -481,6 +482,17 @@ def run_command(
                 event_exit_code = _write_stream_event(event, as_json=as_json)
                 if event_exit_code is not None:
                     exit_code = event_exit_code
+                    saw_exit = True
+            if not saw_exit:
+                message = (
+                    "Command stream ended before the remote exit status was received."
+                )
+                if as_json:
+                    _print_json_line({"type": "error", "data": message})
+                else:
+                    sys.stderr.write(f"{message}\n")
+                    sys.stderr.flush()
+                exit_code = 1
             raise typer.Exit(exit_code)
 
         result = _exec_with_resume(

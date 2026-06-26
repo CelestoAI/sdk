@@ -200,16 +200,24 @@ class ComputerExecResponse(TypedDict):
 class ComputerCommandHistoryEntry(TypedDict):
     """A prior command execution for a computer."""
 
-    id: NotRequired[str]
-    computer_id: NotRequired[str]
-    command: str
-    status: NotRequired[str]
-    exit_code: NotRequired[int | None]
-    stdout: NotRequired[str | None]
-    stderr: NotRequired[str | None]
-    created_at: NotRequired[str | None]
+    command_id: str
+    source: str
+    status: str
     started_at: NotRequired[str | None]
-    completed_at: NotRequired[str | None]
+    ended_at: NotRequired[str | None]
+    duration_ms: NotRequired[int | None]
+    timeout_seconds: NotRequired[int | None]
+    exit_code: NotRequired[int | None]
+    stdout_bytes: NotRequired[int | None]
+    stderr_bytes: NotRequired[int | None]
+    error_type: NotRequired[str | None]
+
+
+class ComputerCommandHistoryResponse(TypedDict):
+    """Response from listing prior command executions."""
+
+    commands: List[ComputerCommandHistoryEntry]
+    count: int
 
 
 # ============================================================================
@@ -238,4 +246,5 @@ __all__ = [
     "ComputerListResponse",
     "ComputerExecResponse",
     "ComputerCommandHistoryEntry",
+    "ComputerCommandHistoryResponse",
 ]
