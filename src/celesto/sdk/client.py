@@ -20,6 +20,10 @@ from .exceptions import (
 )
 
 _BASE_URL = os.environ.get("CELESTO_BASE_URL", "https://api.celesto.ai/v1")
+# Deployed proxies can terminate long idle buffered exec responses before the
+# backend command timeout. Aggregate the existing streaming endpoint for longer
+# commands while preserving the public exec() return shape.
+_STREAM_EXEC_FOR_TIMEOUT_OVER_SECONDS = 110
 
 
 class _BaseConnection:
@@ -1032,12 +1036,83 @@ class Computers(_BaseClient):
         Returns:
             Dict with exit_code, stdout, stderr.
         """
+        if timeout > _STREAM_EXEC_FOR_TIMEOUT_OVER_SECONDS:
+            return self._exec_via_stream(
+                computer_id,
+                command,
+                timeout=timeout,
+            )
+
         return self._request(
             "POST",
             f"/computers/{computer_id}/exec",
             json_body={"command": command, "timeout": timeout},
             timeout=self._timeout_with_read(timeout + 15),
         )
+
+    def _exec_via_stream(
+        self,
+        computer_id: str,
+        command: str,
+        *,
+        timeout: int,
+    ) -> dict[str, Any]:
+        stdout_parts: list[str] = []
+        stderr_parts: list[str] = []
+        exit_code: int | None = None
+        duration_ms: int | None = None
+        timed_out: bool | None = None
+        command_id: str | None = None
+
+        for event in self.exec_stream(computer_id, command, timeout=timeout):
+            if command_id is None and isinstance(event.get("command_id"), str):
+                command_id = event["command_id"]
+
+            if event.get("stdout") is not None:
+                stdout_parts.append(str(event["stdout"]))
+            if event.get("stderr") is not None:
+                stderr_parts.append(str(event["stderr"]))
+
+            event_type = event.get("type")
+            if event_type == "stdout":
+                stdout_parts.append(str(event.get("data", "")))
+            elif event_type == "stderr":
+                stderr_parts.append(str(event.get("data", "")))
+
+            if "exit_code" in event:
+                raw_exit_code = event.get("exit_code")
+                if isinstance(raw_exit_code, int):
+                    exit_code = raw_exit_code
+                elif (
+                    isinstance(raw_exit_code, str)
+                    and raw_exit_code.lstrip("-").isdigit()
+                ):
+                    exit_code = int(raw_exit_code)
+                else:
+                    exit_code = 1
+                raw_duration_ms = event.get("duration_ms")
+                if isinstance(raw_duration_ms, int):
+                    duration_ms = raw_duration_ms
+                if "timed_out" in event:
+                    timed_out = bool(event.get("timed_out"))
+
+        if exit_code is None:
+            raise CelestoServerError(
+                "Command stream ended before the remote exit status was received."
+            )
+
+        result: dict[str, Any] = {
+            "exit_code": exit_code,
+            "stdout": "".join(stdout_parts),
+            "stderr": "".join(stderr_parts),
+        }
+        if command_id is not None:
+            result["command_id"] = command_id
+        if duration_ms is not None:
+            result["duration_ms"] = duration_ms
+        if timed_out is not None:
+            result["timed_out"] = timed_out
+        return result
 
     def exec_stream(
         self,
