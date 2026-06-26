@@ -920,6 +920,7 @@ class Computers(_BaseClient):
             "POST",
             "/computers",
             json_body=payload,
+            timeout=self._timeout_with_read(600),
         )
 
     def list_templates(self) -> list[dict[str, Any]]:
