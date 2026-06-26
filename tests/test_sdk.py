@@ -160,6 +160,40 @@ def test_computers_exec_uses_per_request_read_timeout_without_mutating_default()
     assert session.timeout.read == 120
 
 
+def test_computers_exec_aggregates_stream_for_long_timeouts(monkeypatch):
+    session = DummySession(payload={"exit_code": 0, "stdout": "buffered\n"})
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+    stream_calls = []
+
+    def fake_exec_stream(computer_id: str, command: str, *, timeout: int = 30):
+        stream_calls.append((computer_id, command, timeout))
+        yield {"type": "stdout", "data": "hello\n"}
+        yield {"type": "stderr", "data": "warn\n"}
+        yield {
+            "type": "exit",
+            "exit_code": "7",
+            "duration_ms": 123,
+            "timed_out": False,
+            "command_id": "cmd_123",
+        }
+
+    monkeypatch.setattr(client.computers, "exec_stream", fake_exec_stream)
+
+    result = client.computers.exec("cmp_123", "sleep 130", timeout=300)
+
+    assert result == {
+        "exit_code": 7,
+        "stdout": "hello\n",
+        "stderr": "warn\n",
+        "command_id": "cmd_123",
+        "duration_ms": 123,
+        "timed_out": False,
+    }
+    assert stream_calls == [("cmp_123", "sleep 130", 300)]
+    assert session.calls == []
+
+
 def test_computers_list_command_history_hits_backend_endpoint():
     session = DummySession(payload={"commands": []})
     client = Celesto("test-key", base_url="https://api.example.test/v1")
