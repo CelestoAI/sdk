@@ -10,6 +10,7 @@ from .exceptions import (
 )
 from .types import (
     AccessRules,
+    ComputerCommandHistoryEntry,
     ComputerConnectionInfo,
     ComputerExecResponse,
     ComputerInfo,
@@ -53,4 +54,5 @@ __all__ = [
     "SandboxTemplateInfo",
     "ComputerListResponse",
     "ComputerExecResponse",
+    "ComputerCommandHistoryEntry",
 ]

@@ -10,6 +10,7 @@ class DummySession:
         self.status_code = status_code
         self.payload = payload if payload is not None else {}
         self.calls = []
+        self.timeout = httpx.Timeout(connect=10, read=120, write=10, pool=10)
 
     def request(self, method, url, **kwargs):
         self.calls.append({"method": method, "url": url, **kwargs})
@@ -108,6 +109,71 @@ def test_computers_list_templates_hits_backend_endpoint():
     assert session.calls[0]["url"] == "https://api.example.test/v1/computers/templates"
 
 
+def test_computers_list_preserves_default_unfiltered_request():
+    session = DummySession(payload={"computers": [], "count": 0})
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    result = client.computers.list()
+
+    assert result["count"] == 0
+    assert session.calls[0]["method"] == "GET"
+    assert session.calls[0]["url"] == "https://api.example.test/v1/computers"
+    assert session.calls[0]["params"] is None
+
+
+def test_computers_list_sends_filters_as_query_params():
+    session = DummySession(payload={"computers": [], "count": 0})
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    client.computers.list(
+        status="running",
+        template_id="browser-agent",
+        project_id="proj_123",
+        limit=5,
+    )
+
+    assert session.calls[0]["params"] == {
+        "status": "running",
+        "template_id": "browser-agent",
+        "project_id": "proj_123",
+        "limit": 5,
+    }
+
+
+def test_computers_exec_uses_per_request_read_timeout_without_mutating_default():
+    session = DummySession(payload={"exit_code": 0, "stdout": "ok\n", "stderr": ""})
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    result = client.computers.exec("cmp_123", "sleep 1", timeout=60)
+
+    assert result["stdout"] == "ok\n"
+    assert (
+        session.calls[0]["url"] == "https://api.example.test/v1/computers/cmp_123/exec"
+    )
+    assert session.calls[0]["json"] == {"command": "sleep 1", "timeout": 60}
+    assert session.calls[0]["timeout"].read == 75
+    assert session.timeout.read == 120
+
+
+def test_computers_list_command_history_hits_backend_endpoint():
+    session = DummySession(payload={"commands": []})
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    result = client.computers.list_command_history("cmp_123", limit=10)
+
+    assert result == {"commands": []}
+    assert session.calls[0]["method"] == "GET"
+    assert (
+        session.calls[0]["url"]
+        == "https://api.example.test/v1/computers/cmp_123/commands"
+    )
+    assert session.calls[0]["params"] == {"limit": 10}
+
+
 def test_computers_publish_port_hits_backend_endpoint():
     session = DummySession(
         payload={
@@ -126,7 +192,10 @@ def test_computers_publish_port_hits_backend_endpoint():
 
     assert result["url"] == "https://p-test.celesto.ai"
     assert session.calls[0]["method"] == "POST"
-    assert session.calls[0]["url"] == "https://api.example.test/v1/computers/curie/published-ports"
+    assert (
+        session.calls[0]["url"]
+        == "https://api.example.test/v1/computers/curie/published-ports"
+    )
     assert session.calls[0]["json"] == {"port": 8000}
 
 
@@ -139,7 +208,10 @@ def test_computers_list_published_ports_hits_backend_endpoint():
 
     assert result == []
     assert session.calls[0]["method"] == "GET"
-    assert session.calls[0]["url"] == "https://api.example.test/v1/computers/cmp_123/published-ports"
+    assert (
+        session.calls[0]["url"]
+        == "https://api.example.test/v1/computers/cmp_123/published-ports"
+    )
 
 
 def test_computers_unpublish_port_hits_backend_endpoint():
@@ -159,4 +231,7 @@ def test_computers_unpublish_port_hits_backend_endpoint():
 
     assert result["status"] == "unpublished"
     assert session.calls[0]["method"] == "DELETE"
-    assert session.calls[0]["url"] == "https://api.example.test/v1/computers/cmp_123/published-ports/8000"
+    assert (
+        session.calls[0]["url"]
+        == "https://api.example.test/v1/computers/cmp_123/published-ports/8000"
+    )
