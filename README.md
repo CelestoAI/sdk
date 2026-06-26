@@ -95,8 +95,17 @@ with Celesto(api_key="your-api-key") as client:
 ## Manage Computers from the CLI
 
 Run these commands in a macOS or Linux shell after `celesto auth login`. The
-first command creates a computer and saves its generated name in
-`COMPUTER_NAME`. It uses Python 3 to read the JSON output.
+first command creates a computer with the default `scratch` template.
+
+```bash
+celesto computer create
+#   Name:   curie
+#   ID:     cmp_123
+#   Status: creating
+```
+
+For later examples, save the generated name in `COMPUTER_NAME`. The command
+uses `--json` so Python can read the output.
 
 ```bash
 COMPUTER_NAME=$(
@@ -105,28 +114,109 @@ COMPUTER_NAME=$(
 )
 ```
 
-Run a command in that computer:
+Inspect that computer by name or ID:
+
+```bash
+celesto computer get "$COMPUTER_NAME"
+#   Name:   curie
+#   ID:     cmp_123
+#   Status: running
+```
+
+List your computers:
+
+```bash
+celesto computer list
+```
+
+Filter the list by status:
+
+```bash
+celesto computer list --status running
+```
+
+Filter the list by template. Template IDs come from `celesto computer templates`;
+`browser-agent` is one ready-made template.
+
+```bash
+celesto computer list --template browser-agent
+```
+
+Filter the list by project. Replace `proj_123` with a project ID from your
+Celesto workspace.
+
+```bash
+celesto computer list --project proj_123
+```
+
+Limit the number of computers returned:
+
+```bash
+celesto computer list --limit 10
+```
+
+Run a command in the computer:
 
 ```bash
 celesto computer run "$COMPUTER_NAME" "uname -a"
 ```
 
-Delete the computer when you are done:
+Use a longer timeout for slow commands. The value is in seconds and must be
+between 1 and 300.
 
 ```bash
-celesto computer delete --force "$COMPUTER_NAME"
+celesto computer run "$COMPUTER_NAME" "sleep 10 && echo done" --timeout 30
 ```
 
-To open an interactive terminal, create a computer and save its name:
+Stream output while a command is still running:
 
 ```bash
-COMPUTER_NAME=$(
-  celesto computer create --json |
-  python3 -c 'import json, sys; print(json.load(sys.stdin)["name"])'
-)
+celesto computer run "$COMPUTER_NAME" "for i in 1 2 3; do echo $i; sleep 1; done" --stream
+# 1
+# 2
+# 3
 ```
 
-Connect to it:
+`celesto computer run --json` prints one JSON object for scripts and exits with
+the same exit code as the remote command. `celesto computer run --stream --json`
+prints one compact JSON event per line.
+
+Current caveat: commands run as the computer image's default exec user. The CLI
+and SDK do not yet expose a `--user` option. Run `whoami` first if your script
+depends on a specific home directory or file permission.
+
+List templates when you want a computer with tools already installed:
+
+```bash
+celesto computer templates
+```
+
+Create a computer from a template:
+
+```bash
+celesto computer create --template coding-agent
+```
+
+Publish port 8000 when a process in the computer needs a public URL:
+
+```bash
+celesto computer port publish "$COMPUTER_NAME" --port 8000
+# https://p-test.celesto.ai
+```
+
+List published ports:
+
+```bash
+celesto computer port list "$COMPUTER_NAME"
+```
+
+Unpublish the port when you are done:
+
+```bash
+celesto computer port unpublish "$COMPUTER_NAME" --port 8000
+```
+
+To open an interactive terminal, connect to the same computer:
 
 ```bash
 celesto computer ssh "$COMPUTER_NAME"
@@ -200,8 +290,13 @@ from celesto import Celesto
 with Celesto() as client:
     templates = client.computers.list_templates()
     for template in templates:
-        print(template["id"], template["default_ram_mb"])
+        print(template["id"], template.get("preinstalled_tools", []))
 ```
+
+Template responses may include metadata such as aliases, capabilities,
+preinstalled tools, recommended uses, default published ports, and browser
+support flags. Older template records may omit those fields, so use `.get()`
+when your code can run against multiple API versions.
 
 Create a computer from a template:
 
@@ -232,18 +327,59 @@ with Celesto() as client:
         client.computers.delete(computer["id"])
 ```
 
+The `timeout` value is the remote command timeout in seconds. The SDK gives the
+HTTP request a little more time than the command itself so slow command output
+can still return cleanly.
+
+Current caveat: `exec()` runs as the computer image's default exec user. The SDK
+does not yet expose a user selector.
+
 ### List, Stop, Start, and Delete
 
 `computer_id` can be the ID returned by `client.computers.create()`, such as
 `computer["id"]`, or a computer name shown by `celesto computer list`.
 
+Filter a list when you only want matching computers:
+
+```python
+from celesto import Celesto
+
+with Celesto() as client:
+    result = client.computers.list(status="running", template_id="browser-agent")
+    for computer in result["computers"]:
+        print(computer["name"])
+```
+
 | Method | What it does |
 | --- | --- |
 | `client.computers.list()` | List computers in your account |
+| `client.computers.list(status="running", template_id="browser-agent", project_id="proj_123", limit=10)` | List matching computers |
 | `client.computers.get(computer_id)` | Get one computer by name or ID |
 | `client.computers.stop(computer_id)` | Stop a running computer |
 | `client.computers.start(computer_id)` | Start a stopped computer |
 | `client.computers.delete(computer_id)` | Delete a computer |
+
+### Publish Ports
+
+Publish a port when a service inside the computer needs a public URL:
+
+```python
+from celesto import Celesto
+
+with Celesto() as client:
+    published = client.computers.publish_port("curie", port=8000)
+    print(published["url"])
+```
+
+List and remove published ports:
+
+```python
+from celesto import Celesto
+
+with Celesto() as client:
+    print(client.computers.list_published_ports("curie"))
+    client.computers.unpublish_port("curie", port=8000)
+```
 
 ## CLI Commands
 
@@ -255,8 +391,14 @@ with Celesto() as client:
 | `celesto computer create [--cpus N] [--memory MB] [--disk-size-mb MB] [--template ID]` | Create a computer |
 | `celesto computer templates` | List templates with preinstalled tools |
 | `celesto computer list` | List your computers |
-| `celesto computer run NAME "command"` | Run a command on a computer |
+| `celesto computer list [--status STATUS] [--template ID] [--project ID] [--limit N]` | List matching computers |
+| `celesto computer get NAME` | Get one computer by name or ID |
+| `celesto computer run NAME "command" [--timeout N]` | Run a command on a computer |
+| `celesto computer run NAME "command" --stream` | Stream command output while it runs |
 | `celesto computer ssh NAME` | Open an interactive terminal |
+| `celesto computer port publish NAME --port 8000` | Publish a computer port |
+| `celesto computer port list NAME` | List published ports |
+| `celesto computer port unpublish NAME --port 8000` | Unpublish a computer port |
 | `celesto computer stop NAME` | Stop a computer |
 | `celesto computer start NAME` | Start a stopped computer |
 | `celesto computer delete [--force] NAME` | Delete a computer |

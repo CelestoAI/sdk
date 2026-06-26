@@ -173,6 +173,13 @@ class SandboxTemplateInfo(TypedDict):
     default_disk_size_mb: int
     version: NotRequired[str | None]
     experimental: bool
+    aliases: NotRequired[List[str]]
+    capabilities: NotRequired[List[str]]
+    preinstalled_tools: NotRequired[List[str]]
+    recommended_for: NotRequired[List[str]]
+    default_published_ports: NotRequired[List[int]]
+    has_playwright_browsers: NotRequired[bool]
+    has_browser_system_deps: NotRequired[bool]
 
 
 class ComputerListResponse(TypedDict):
@@ -188,6 +195,29 @@ class ComputerExecResponse(TypedDict):
     exit_code: int
     stdout: str
     stderr: str
+
+
+class ComputerCommandHistoryEntry(TypedDict):
+    """A prior command execution for a computer."""
+
+    command_id: str
+    source: str
+    status: str
+    started_at: NotRequired[str | None]
+    ended_at: NotRequired[str | None]
+    duration_ms: NotRequired[int | None]
+    timeout_seconds: NotRequired[int | None]
+    exit_code: NotRequired[int | None]
+    stdout_bytes: NotRequired[int | None]
+    stderr_bytes: NotRequired[int | None]
+    error_type: NotRequired[str | None]
+
+
+class ComputerCommandHistoryResponse(TypedDict):
+    """Response from listing prior command executions."""
+
+    commands: List[ComputerCommandHistoryEntry]
+    count: int
 
 
 # ============================================================================
@@ -215,4 +245,6 @@ __all__ = [
     "SandboxTemplateInfo",
     "ComputerListResponse",
     "ComputerExecResponse",
+    "ComputerCommandHistoryEntry",
+    "ComputerCommandHistoryResponse",
 ]

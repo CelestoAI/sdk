@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Optional
+import time
+from collections.abc import Iterable
+from typing import Any, Optional
 
 import typer
 from rich.console import Console
@@ -14,6 +16,7 @@ from typing_extensions import Annotated
 
 from .deployment import _get_api_key
 from .sdk.client import Celesto
+from .sdk.exceptions import CelestoServerError
 
 app = typer.Typer(help="Create, manage, and connect to sandboxed computers.")
 port_app = typer.Typer(help="Publish and unpublish computer ports.")
@@ -80,6 +83,120 @@ def _format_optional_text(value: object) -> str:
 def _print_json(data: object) -> None:
     """Print JSON to stdout (no Rich formatting)."""
     sys.stdout.write(json.dumps(data, indent=2, default=str) + "\n")
+
+
+def _print_json_line(data: object) -> None:
+    """Print one compact JSON event for streaming output."""
+    sys.stdout.write(json.dumps(data, default=str) + "\n")
+
+
+def _coerce_exit_code(value: object) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.lstrip("-").isdigit():
+        return int(value)
+    return 0
+
+
+def _print_computer_details(info: dict[str, Any]) -> None:
+    name = info.get("name", "")
+    status = str(info.get("status", ""))
+    color = _status_color(status)
+
+    console.print(f"  Name:   [bold]{name}[/bold]")
+    console.print(f"  ID:     [dim]{info.get('id', '')}[/dim]")
+    console.print(f"  Status: [{color}]{status}[/{color}]")
+    console.print(f"  CPUs:   {info.get('vcpus', 'N/A')}")
+    console.print(f"  Memory: {_format_optional_memory(info.get('ram_mb'))}")
+    console.print(f"  Disk:   {_format_optional_memory(info.get('disk_size_mb'))}")
+    console.print(f"  Template: {_format_optional_text(info.get('template_id'))}")
+    if info.get("created_at"):
+        console.print(f"  Created: {str(info.get('created_at'))[:19]}")
+
+
+def _is_stopped_conflict(error: CelestoServerError) -> bool:
+    message = str(error).lower()
+    return "stopped" in message or "409" in message
+
+
+def _resume_computer(client: Celesto, computer_id: str, *, quiet: bool = False) -> None:
+    if not quiet:
+        console.print("[yellow]Computer is stopped. Resuming...[/yellow]")
+    client.computers.start(computer_id)
+    for _ in range(30):
+        info = client.computers.get(computer_id)
+        if info.get("status") == "running":
+            break
+        time.sleep(1)
+    else:
+        if not quiet:
+            console.print("[red]Computer failed to resume.[/red]")
+        raise typer.Exit(1)
+    if not quiet:
+        console.print("[green]Computer resumed.[/green]")
+
+
+def _exec_with_resume(
+    client: Celesto,
+    computer_id: str,
+    command: str,
+    *,
+    timeout: int,
+    quiet: bool = False,
+) -> dict[str, Any]:
+    try:
+        return client.computers.exec(computer_id, command, timeout=timeout)
+    except CelestoServerError as e:
+        if not _is_stopped_conflict(e):
+            raise
+        _resume_computer(client, computer_id, quiet=quiet)
+        return client.computers.exec(computer_id, command, timeout=timeout)
+
+
+def _exec_stream_with_resume(
+    client: Celesto,
+    computer_id: str,
+    command: str,
+    *,
+    timeout: int,
+    quiet: bool = False,
+) -> Iterable[dict[str, Any]]:
+    try:
+        yield from client.computers.exec_stream(computer_id, command, timeout=timeout)
+    except CelestoServerError as e:
+        if not _is_stopped_conflict(e):
+            raise
+        _resume_computer(client, computer_id, quiet=quiet)
+        yield from client.computers.exec_stream(computer_id, command, timeout=timeout)
+
+
+def _write_stream_event(event: dict[str, Any], *, as_json: bool = False) -> int | None:
+    if as_json:
+        _print_json_line(event)
+    else:
+        wrote = False
+        stdout = event.get("stdout")
+        stderr = event.get("stderr")
+        if stdout is not None:
+            sys.stdout.write(str(stdout))
+            sys.stdout.flush()
+            wrote = True
+        if stderr is not None:
+            sys.stderr.write(str(stderr))
+            sys.stderr.flush()
+            wrote = True
+        if not wrote and "data" in event:
+            destination = (
+                sys.stderr
+                if event.get("stream") == "stderr" or event.get("type") == "stderr"
+                else sys.stdout
+            )
+            destination.write(str(event["data"]))
+            destination.flush()
+
+    if "exit_code" in event:
+        return _coerce_exit_code(event.get("exit_code"))
+    return None
 
 
 @port_app.command("publish")
@@ -217,14 +334,50 @@ def create_computer(
     console.print(f"[dim]Connect with:[/dim] celesto computer ssh {cname}")
 
 
+@app.command("get")
+def get_computer(
+    computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
+    as_json: JsonOption = False,
+    api_key: ApiKeyOption = None,
+):
+    """Get one computer by name or ID."""
+    with _get_client(api_key) as client:
+        result = client.computers.get(computer_id)
+
+    if as_json:
+        _print_json(result)
+        return
+
+    _print_computer_details(result)
+
+
 @app.command("list")
 def list_computers(
+    status: Annotated[
+        Optional[str], typer.Option("--status", help="Filter by computer status")
+    ] = None,
+    template_id: Annotated[
+        Optional[str],
+        typer.Option("--template", "--template-id", help="Filter by template ID"),
+    ] = None,
+    project_id: Annotated[
+        Optional[str],
+        typer.Option("--project", "--project-id", help="Filter by project ID"),
+    ] = None,
+    limit: Annotated[
+        Optional[int], typer.Option("--limit", min=1, help="Maximum computers to list")
+    ] = None,
     as_json: JsonOption = False,
     api_key: ApiKeyOption = None,
 ):
     """List all computers."""
     with _get_client(api_key) as client:
-        result = client.computers.list()
+        result = client.computers.list(
+            status=status,
+            template_id=template_id,
+            project_id=project_id,
+            limit=limit,
+        )
 
     computers = result.get("computers", [])
 
@@ -304,42 +457,55 @@ def run_command(
     computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
     command: Annotated[str, typer.Argument(help="Command to execute")],
     timeout: Annotated[
-        int, typer.Option("--timeout", "-t", help="Timeout in seconds")
+        int,
+        typer.Option("--timeout", "-t", min=1, max=300, help="Timeout in seconds"),
     ] = 30,
+    stream: Annotated[
+        bool, typer.Option("--stream", help="Stream output while the command runs")
+    ] = False,
     as_json: JsonOption = False,
     api_key: ApiKeyOption = None,
 ):
     """Execute a command on a computer. Automatically resumes stopped computers."""
-    import time
-
-    from .sdk.exceptions import CelestoServerError
-
     with _get_client(api_key) as client:
-        try:
-            result = client.computers.exec(computer_id, command, timeout=timeout)
-        except CelestoServerError as e:
-            if "stopped" in str(e).lower() or "409" in str(e):
-                if not as_json:
-                    console.print("[yellow]Computer is stopped. Resuming...[/yellow]")
-                client.computers.start(computer_id)
-                # Wait for it to be running
-                for _ in range(30):
-                    info = client.computers.get(computer_id)
-                    if info.get("status") == "running":
-                        break
-                    time.sleep(1)
+        if stream:
+            exit_code = 0
+            saw_exit = False
+            events = _exec_stream_with_resume(
+                client,
+                computer_id,
+                command,
+                timeout=timeout,
+                quiet=as_json,
+            )
+            for event in events:
+                event_exit_code = _write_stream_event(event, as_json=as_json)
+                if event_exit_code is not None:
+                    exit_code = event_exit_code
+                    saw_exit = True
+            if not saw_exit:
+                message = (
+                    "Command stream ended before the remote exit status was received."
+                )
+                if as_json:
+                    _print_json_line({"type": "error", "data": message})
                 else:
-                    console.print("[red]Computer failed to resume.[/red]")
-                    raise typer.Exit(1)
-                if not as_json:
-                    console.print("[green]Computer resumed.[/green]")
-                result = client.computers.exec(computer_id, command, timeout=timeout)
-            else:
-                raise
+                    sys.stderr.write(f"{message}\n")
+                    sys.stderr.flush()
+                exit_code = 1
+            raise typer.Exit(exit_code)
+
+        result = _exec_with_resume(
+            client,
+            computer_id,
+            command,
+            timeout=timeout,
+            quiet=as_json,
+        )
 
     if as_json:
         _print_json(result)
-        return
+        raise typer.Exit(_coerce_exit_code(result.get("exit_code")))
 
     if result.get("stdout"):
         sys.stdout.write(result["stdout"])

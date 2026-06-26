@@ -3,6 +3,7 @@ import os
 import sys
 import tarfile
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, List, Literal, Optional
 
@@ -106,6 +107,7 @@ class _BaseClient:
         json_body: dict[str, Any] | None = None,
         data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
+        timeout: httpx.Timeout | None = None,
     ) -> Any:
         """Make an HTTP request with proper error handling.
 
@@ -116,6 +118,7 @@ class _BaseClient:
             json_body: JSON request body
             data: Form data
             files: Files for multipart upload
+            timeout: Optional per-request timeout override
 
         Returns:
             Parsed JSON response
@@ -131,14 +134,16 @@ class _BaseClient:
         url = f"{self.base_url}{path}"
 
         try:
-            response = self.session.request(
-                method,
-                url,
-                params=params,
-                json=json_body,
-                data=data,
-                files=files,
-            )
+            request_kwargs: dict[str, Any] = {
+                "params": params,
+                "json": json_body,
+                "data": data,
+                "files": files,
+            }
+            if timeout is not None:
+                request_kwargs["timeout"] = timeout
+
+            response = self.session.request(method, url, **request_kwargs)
         except httpx.ConnectError as e:
             raise CelestoNetworkError(f"Failed to connect to Celesto API: {e}") from e
         except httpx.TimeoutException as e:
@@ -149,6 +154,59 @@ class _BaseClient:
             ) from e
 
         return self._handle_response(response)
+
+    def _stream_request(
+        self,
+        method: Literal["GET", "POST", "PUT", "DELETE"],
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+        timeout: httpx.Timeout | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Stream newline-delimited JSON or SSE-style events from the API."""
+        url = f"{self.base_url}{path}"
+        request_kwargs: dict[str, Any] = {"params": params, "json": json_body}
+        if timeout is not None:
+            request_kwargs["timeout"] = timeout
+
+        try:
+            with self.session.stream(method, url, **request_kwargs) as response:
+                if response.status_code not in (200, 201, 204):
+                    response.read()
+                    self._handle_response(response)
+
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    text = line.decode("utf-8") if isinstance(line, bytes) else line
+                    text = text.strip()
+                    if not text:
+                        continue
+                    if text.startswith("data:"):
+                        text = text.removeprefix("data:").strip()
+                    if text == "[DONE]":
+                        break
+                    try:
+                        parsed = json.loads(text)
+                    except json.JSONDecodeError:
+                        yield {"type": "stdout", "data": text}
+                        continue
+                    if isinstance(parsed, dict):
+                        yield parsed
+                    else:
+                        yield {"type": "stdout", "data": parsed}
+        except httpx.ConnectError as e:
+            raise CelestoNetworkError(f"Failed to connect to Celesto API: {e}") from e
+        except httpx.TimeoutException as e:
+            raise CelestoNetworkError(f"Request to Celesto API timed out: {e}") from e
+        except httpx.HTTPError as e:
+            raise CelestoNetworkError(
+                f"Network error while contacting Celesto API: {e}"
+            ) from e
+
+    def _timeout_with_read(self, read_timeout: int | float) -> httpx.Timeout:
+        return httpx.Timeout(connect=10, read=read_timeout, write=10, pool=10)
 
     def _handle_response(self, response: httpx.Response) -> Any:
         """Handle HTTP response and raise appropriate exceptions for errors."""
@@ -873,13 +931,36 @@ class Computers(_BaseClient):
         """
         return self._request("GET", "/computers/templates")
 
-    def list(self) -> dict[str, Any]:
+    def list(
+        self,
+        *,
+        status: str | None = None,
+        template_id: str | None = None,
+        project_id: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
         """List all computers in the current organization.
+
+        Args:
+            status: Optional status filter, such as "running" or "stopped".
+            template_id: Optional template filter, such as "coding-agent".
+            project_id: Optional project ID filter.
+            limit: Optional maximum number of computers to return.
 
         Returns:
             Dict with "computers" list and "count".
         """
-        return self._request("GET", "/computers")
+        params: dict[str, Any] = {}
+        if status is not None:
+            params["status"] = status
+        if template_id is not None:
+            params["template_id"] = template_id
+        if project_id is not None:
+            params["project_id"] = project_id
+        if limit is not None:
+            params["limit"] = limit
+
+        return self._request("GET", "/computers", params=params or None)
 
     def get(self, computer_id: str) -> dict[str, Any]:
         """Get details of a specific computer.
@@ -929,7 +1010,9 @@ class Computers(_BaseClient):
         Returns:
             Unpublished port dict.
         """
-        return self._request("DELETE", f"/computers/{computer_id}/published-ports/{port}")
+        return self._request(
+            "DELETE", f"/computers/{computer_id}/published-ports/{port}"
+        )
 
     def exec(
         self,
@@ -952,6 +1035,60 @@ class Computers(_BaseClient):
             "POST",
             f"/computers/{computer_id}/exec",
             json_body={"command": command, "timeout": timeout},
+            timeout=self._timeout_with_read(timeout + 15),
+        )
+
+    def exec_stream(
+        self,
+        computer_id: str,
+        command: str,
+        *,
+        timeout: int = 30,
+    ) -> Iterator[dict[str, Any]]:
+        """Stream command output from a running computer.
+
+        Args:
+            computer_id: Computer ID.
+            command: Shell command to execute.
+            timeout: Timeout in seconds (1-300).
+
+        Yields:
+            Stream event dicts from the backend. Events may include stdout,
+            stderr, data, stream, type, and exit_code fields.
+        """
+        return self._stream_request(
+            "POST",
+            f"/computers/{computer_id}/exec/stream",
+            json_body={"command": command, "timeout": timeout},
+            timeout=self._timeout_with_read(timeout + 15),
+        )
+
+    def list_command_history(
+        self,
+        computer_id: str,
+        *,
+        limit: int | None = None,
+    ) -> Any:
+        """List prior commands for a computer.
+
+        This wraps the existing backend command-history endpoint without adding
+        a new CLI shape.
+
+        Args:
+            computer_id: Computer ID or name.
+            limit: Optional maximum number of history entries to return.
+
+        Returns:
+            Backend command-history payload.
+        """
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = limit
+
+        return self._request(
+            "GET",
+            f"/computers/{computer_id}/commands",
+            params=params or None,
         )
 
     def stop(self, computer_id: str) -> dict[str, Any]:
