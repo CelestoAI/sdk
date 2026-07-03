@@ -625,8 +625,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--require-mount",
-        default="/mnt/celesto-persistent-home",
-        help="Require this path to be mounted before writing to --target; pass an empty string to disable",
+        default=DEFAULT_PERSISTENT_TARGET,
+        help="Require this path to be mounted before writing under it; pass an empty string to disable",
     )
     parser.add_argument(
         "--compare-root",
