@@ -157,6 +157,126 @@ def juicefs_processes() -> list[str]:
     return [line.strip() for line in completed.stdout.splitlines() if "juicefs" in line.lower()]
 
 
+def capture_command(command: list[str], *, timeout: float = 10) -> dict[str, Any]:
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return {
+            "command": command,
+            "exit_code": completed.returncode,
+            "stdout": completed.stdout[-20000:],
+            "stderr": completed.stderr[-10000:],
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "command": command,
+            "timeout": True,
+            "stdout": (exc.stdout or "")[-20000:] if isinstance(exc.stdout, str) else "",
+            "stderr": (exc.stderr or "")[-10000:] if isinstance(exc.stderr, str) else "",
+        }
+    except Exception as exc:
+        return {"command": command, "error": str(exc)}
+
+
+def juicefs_version() -> dict[str, Any]:
+    return capture_command(["juicefs", "--version"], timeout=5)
+
+
+def target_is_juicefs(mount: dict[str, Any]) -> bool:
+    source = str(mount.get("source") or "").lower()
+    fstype = str(mount.get("fstype") or "").lower()
+    return "juicefs" in source or "juicefs" in fstype
+
+
+def juicefs_stats(path: pathlib.Path) -> dict[str, Any]:
+    return capture_command(
+        [
+            "juicefs",
+            "stats",
+            "--schema",
+            "ufmco",
+            "--verbosity",
+            "1",
+            "--count",
+            "1",
+            str(path),
+        ],
+        timeout=10,
+    )
+
+
+def start_juicefs_profile(path: pathlib.Path, *, enabled: bool) -> subprocess.Popen[str] | None:
+    if not enabled:
+        return None
+    try:
+        return subprocess.Popen(
+            ["juicefs", "profile", str(path), "--interval", "1"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"failed to start juicefs profile for {path}: {exc}") from exc
+
+
+def stop_process(process: subprocess.Popen[str] | None) -> dict[str, Any] | None:
+    if process is None:
+        return None
+    process.terminate()
+    try:
+        stdout, stderr = process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        stdout, stderr = process.communicate(timeout=5)
+    return {
+        "exit_code": process.returncode,
+        "stdout": stdout[-20000:],
+        "stderr": stderr[-10000:],
+    }
+
+
+def delete_target(target_dir: pathlib.Path, *, mount: dict[str, Any], delete_mode: str) -> dict[str, Any]:
+    start = time.perf_counter()
+    if delete_mode == "juicefs-rmr" and target_is_juicefs(mount):
+        completed = subprocess.run(
+            ["juicefs", "rmr", "--threads", "64", str(target_dir)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        seconds = time.perf_counter() - start
+        result = {
+            "method": "juicefs-rmr",
+            "seconds": seconds,
+            "exit_code": completed.returncode,
+            "stdout": completed.stdout[-10000:],
+            "stderr": completed.stderr[-10000:],
+        }
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"juicefs rmr failed for {target_dir}: {completed.stderr or completed.stdout}"
+            )
+        if target_dir.exists():
+            raise RuntimeError(f"juicefs rmr reported success but left target behind: {target_dir}")
+        return result
+
+    shutil.rmtree(target_dir)
+    if target_dir.exists():
+        raise RuntimeError(f"python rmtree left target behind: {target_dir}")
+    return {
+        "method": "python-rmtree",
+        "requested_method": delete_mode,
+        "seconds": time.perf_counter() - start,
+    }
+
+
 def download_one(
     *,
     base_url: str,
@@ -193,6 +313,9 @@ def benchmark_target(
     concurrency: int,
     fsync: bool,
     keep_target: bool,
+    delete_mode: str,
+    collect_juicefs_stats: bool,
+    juicefs_profile: bool,
     base_url: str,
     request_timeout: float,
 ) -> dict[str, Any]:
@@ -203,26 +326,33 @@ def benchmark_target(
 
     before_df = df_info(target_dir)
     before_mount = mount_info(target_dir)
-    start = time.perf_counter()
-    worker = functools.partial(
-        download_one,
-        base_url=base_url,
-        target_dir=target_dir,
-        expected_size=size_bytes,
-        fsync=fsync,
-        request_timeout=request_timeout,
-    )
-    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
-        latencies = list(executor.map(lambda relpath: worker(relpath=relpath), relpaths))
-    download_seconds = time.perf_counter() - start
-    after_df = df_info(target_dir)
-    after_mount = mount_info(target_dir)
+    stats_path = pathlib.Path(before_mount.get("target") or target_dir) if target_is_juicefs(before_mount) else None
+    juicefs_stats_before = juicefs_stats(stats_path) if collect_juicefs_stats and stats_path else None
+    profile_process = start_juicefs_profile(stats_path, enabled=juicefs_profile and stats_path is not None)
+    profile_result = None
+    try:
+        start = time.perf_counter()
+        worker = functools.partial(
+            download_one,
+            base_url=base_url,
+            target_dir=target_dir,
+            expected_size=size_bytes,
+            fsync=fsync,
+            request_timeout=request_timeout,
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+            latencies = list(executor.map(lambda relpath: worker(relpath=relpath), relpaths))
+        download_seconds = time.perf_counter() - start
+        after_df = df_info(target_dir)
+        after_mount = mount_info(target_dir)
+        juicefs_stats_after_write = juicefs_stats(stats_path) if collect_juicefs_stats and stats_path else None
 
-    delete_seconds = None
-    if not keep_target:
-        delete_start = time.perf_counter()
-        shutil.rmtree(target_dir, ignore_errors=True)
-        delete_seconds = time.perf_counter() - delete_start
+        delete_result = None
+        if not keep_target:
+            delete_result = delete_target(target_dir, mount=before_mount, delete_mode=delete_mode)
+        juicefs_stats_after_delete = juicefs_stats(stats_path) if collect_juicefs_stats and stats_path else None
+    finally:
+        profile_result = stop_process(profile_process)
 
     total_bytes = len(relpaths) * size_bytes
     return {
@@ -247,7 +377,12 @@ def benchmark_target(
             "p95": percentile(latencies, 0.95) * 1000,
             "max": max(latencies) * 1000 if latencies else 0.0,
         },
-        "delete_seconds": delete_seconds,
+        "delete_seconds": delete_result["seconds"] if delete_result else None,
+        "delete_result": delete_result,
+        "juicefs_stats_before": juicefs_stats_before,
+        "juicefs_stats_after_write": juicefs_stats_after_write,
+        "juicefs_stats_after_delete": juicefs_stats_after_delete,
+        "juicefs_profile": profile_result,
     }
 
 
@@ -291,6 +426,9 @@ def run(args: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("size_bytes must be 0 or greater")
     if concurrency <= 0:
         raise ValueError("concurrency must be greater than 0")
+    delete_mode = str(args.get("delete_mode") or "python")
+    if delete_mode not in {"python", "juicefs-rmr"}:
+        raise ValueError("delete_mode must be 'python' or 'juicefs-rmr'")
 
     source_dir = pathlib.Path(args["source_dir"])
     source = create_source_files(source_dir, files=files, size_bytes=size_bytes, fanout=fanout)
@@ -323,6 +461,9 @@ def run(args: dict[str, Any]) -> dict[str, Any]:
                 concurrency=concurrency,
                 fsync=bool(args.get("fsync")),
                 keep_target=bool(args.get("keep_target")),
+                delete_mode=delete_mode,
+                collect_juicefs_stats=bool(args.get("collect_juicefs_stats")),
+                juicefs_profile=bool(args.get("juicefs_profile")),
                 base_url=base_url,
                 request_timeout=float(args["request_timeout"]),
             )
@@ -347,11 +488,15 @@ def run(args: dict[str, Any]) -> dict[str, Any]:
             "compare_root": bool(args.get("compare_root")),
             "fsync": bool(args.get("fsync")),
             "keep_target": bool(args.get("keep_target")),
+            "delete_mode": delete_mode,
+            "collect_juicefs_stats": bool(args.get("collect_juicefs_stats")),
+            "juicefs_profile": bool(args.get("juicefs_profile")),
             "require_mount": args.get("require_mount"),
         },
         "source_prepare": source,
         "targets": target_results,
         "juicefs_processes": juicefs_processes(),
+        "juicefs_version": juicefs_version(),
     }
 
 
@@ -539,6 +684,12 @@ def print_result(result: dict[str, Any]) -> None:
     print(f"Fanout dirs: {config['fanout']}")
     print(f"Concurrency: {config['concurrency']}")
     print(f"Source prep: {result['source_prepare']['seconds']:.3f}s")
+    juicefs_version = result.get("juicefs_version") or {}
+    version_text = (
+        juicefs_version.get("stdout") or juicefs_version.get("stderr") or ""
+    ).strip()
+    if version_text:
+        print(f"JuiceFS:    {version_text.splitlines()[-1]}")
 
     juicefs_processes = result.get("juicefs_processes") or []
     if juicefs_processes:
@@ -568,7 +719,15 @@ def print_result(result: dict[str, Any]) -> None:
             f"max={per_file['max']:.2f}ms"
         )
         if target.get("delete_seconds") is not None:
-            print(f"  Delete:     {target['delete_seconds']:.3f}s")
+            delete_result = target.get("delete_result") or {}
+            method = delete_result.get("method") or "unknown"
+            print(f"  Delete:     {target['delete_seconds']:.3f}s ({method})")
+        if target.get("juicefs_stats_after_write"):
+            status = target["juicefs_stats_after_write"].get("exit_code")
+            print(f"  JFS stats:  captured after write (exit={status})")
+        if target.get("juicefs_profile"):
+            status = target["juicefs_profile"].get("exit_code")
+            print(f"  JFS profile: captured (exit={status})")
 
 
 def main() -> None:
@@ -653,6 +812,24 @@ def main() -> None:
         "--keep-target", action="store_true", help="Keep downloaded files after the run"
     )
     parser.add_argument(
+        "--delete-mode",
+        choices=("python", "juicefs-rmr"),
+        default="python",
+        help="Deletion method for benchmark cleanup; juicefs-rmr is used only on JuiceFS targets",
+    )
+    parser.add_argument(
+        "--no-juicefs-stats",
+        dest="collect_juicefs_stats",
+        action="store_false",
+        help="Do not capture JuiceFS stats before and after each JuiceFS target run",
+    )
+    parser.set_defaults(collect_juicefs_stats=True)
+    parser.add_argument(
+        "--juicefs-profile",
+        action="store_true",
+        help="Capture juicefs profile output during each JuiceFS target run",
+    )
+    parser.add_argument(
         "--keep-source",
         action="store_true",
         help="Keep generated source files under --source-dir",
@@ -708,6 +885,9 @@ def main() -> None:
             "require_mount": args.require_mount,
             "fsync": args.fsync,
             "keep_target": args.keep_target,
+            "delete_mode": args.delete_mode,
+            "collect_juicefs_stats": args.collect_juicefs_stats,
+            "juicefs_profile": args.juicefs_profile,
             "keep_source": args.keep_source,
             "request_timeout": args.request_timeout,
         }
