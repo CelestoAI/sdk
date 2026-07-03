@@ -139,6 +139,52 @@ const diskUnitsToMb: Record<string, number> = {
   tib: 1024 * 1024,
 };
 
+const isAsciiDigit = (char: string): boolean => char >= "0" && char <= "9";
+const isAsciiLetter = (char: string): boolean =>
+  (char >= "a" && char <= "z") || (char >= "A" && char <= "Z");
+const isSeparatorWhitespace = (char: string): boolean => char === " " || char === "\t";
+
+const parseDiskString = (disk: string): { amount: string; unit: string } | undefined => {
+  const value = disk.trim();
+  if (!value) {
+    return undefined;
+  }
+
+  let index = 0;
+  let digitCount = 0;
+  let hasDecimalPoint = false;
+  while (index < value.length) {
+    const char = value[index]!;
+    if (isAsciiDigit(char)) {
+      digitCount += 1;
+      index += 1;
+      continue;
+    }
+    if (char === "." && !hasDecimalPoint) {
+      hasDecimalPoint = true;
+      index += 1;
+      continue;
+    }
+    break;
+  }
+
+  if (digitCount === 0 || value[index - 1] === ".") {
+    return undefined;
+  }
+
+  const amount = value.slice(0, index);
+  while (index < value.length && isSeparatorWhitespace(value[index]!)) {
+    index += 1;
+  }
+
+  const unit = value.slice(index);
+  if ([...unit].some((char) => !isAsciiLetter(char))) {
+    return undefined;
+  }
+
+  return { amount, unit };
+};
+
 const parseDiskSizeMb = (disk: number | string | undefined): number | undefined => {
   if (disk === undefined) {
     return undefined;
@@ -151,17 +197,17 @@ const parseDiskSizeMb = (disk: number | string | undefined): number | undefined 
     return disk;
   }
 
-  const match = /^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z]*)\s*$/.exec(disk);
-  if (!match) {
+  const parsedDisk = parseDiskString(disk);
+  if (!parsedDisk) {
     throw new Error("disk must be a size in MB or a string like '2gb'.");
   }
 
-  const multiplier = diskUnitsToMb[match[2]!.toLowerCase()];
+  const multiplier = diskUnitsToMb[parsedDisk.unit.toLowerCase()];
   if (multiplier === undefined) {
     throw new Error("disk must use MB, GB, or TB, for example '2048mb' or '2gb'.");
   }
 
-  const sizeMb = Number(match[1]) * multiplier;
+  const sizeMb = Number(parsedDisk.amount) * multiplier;
   if (!Number.isInteger(sizeMb) || sizeMb <= 0) {
     throw new Error("disk must resolve to a whole number of MB, for example '1536mb' or '1.5gb'.");
   }
