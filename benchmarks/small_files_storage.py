@@ -210,6 +210,20 @@ def juicefs_stats(path: pathlib.Path) -> dict[str, Any]:
     )
 
 
+def juicefs_stats_mountpoint(target_dir: pathlib.Path, mount: dict[str, Any]) -> pathlib.Path | None:
+    if not target_is_juicefs(mount):
+        return None
+    candidates = [
+        pathlib.Path("/mnt/celesto-persistent-home"),
+        pathlib.Path(str(mount.get("target") or "")),
+        target_dir,
+    ]
+    for candidate in candidates:
+        if candidate.exists() and os.path.ismount(candidate):
+            return candidate
+    return None
+
+
 def start_juicefs_profile(path: pathlib.Path, *, enabled: bool) -> subprocess.Popen[str] | None:
     if not enabled:
         return None
@@ -326,7 +340,7 @@ def benchmark_target(
 
     before_df = df_info(target_dir)
     before_mount = mount_info(target_dir)
-    stats_path = pathlib.Path(before_mount.get("target") or target_dir) if target_is_juicefs(before_mount) else None
+    stats_path = juicefs_stats_mountpoint(target_dir, before_mount)
     juicefs_stats_before = juicefs_stats(stats_path) if collect_juicefs_stats and stats_path else None
     profile_process = start_juicefs_profile(stats_path, enabled=juicefs_profile and stats_path is not None)
     profile_result = None
