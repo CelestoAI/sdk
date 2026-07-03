@@ -20,11 +20,14 @@ import json
 import statistics
 import sys
 import time
+from typing import Any
 
-from celesto.sdk import Celesto
+from dotenv import find_dotenv, load_dotenv
+
+from celesto.sdk.client import _CelestoClient
 
 
-def measure(fn, label: str = "") -> tuple[float, any]:
+def measure(fn, label: str = "") -> tuple[float, Any]:
     """Run fn, return (elapsed_seconds, result)."""
     start = time.perf_counter()
     result = fn()
@@ -32,7 +35,9 @@ def measure(fn, label: str = "") -> tuple[float, any]:
     return elapsed, result
 
 
-def wait_for_status(client: Celesto, computer_id: str, target: str, timeout: float = 120) -> float:
+def wait_for_status(
+    client: _CelestoClient, computer_id: str, target: str, timeout: float = 120
+) -> float:
     """Poll until computer reaches target status. Returns wait time."""
     start = time.perf_counter()
     while time.perf_counter() - start < timeout:
@@ -40,10 +45,14 @@ def wait_for_status(client: Celesto, computer_id: str, target: str, timeout: flo
         if info["status"] == target:
             return time.perf_counter() - start
         time.sleep(0.5)
-    raise TimeoutError(f"Computer {computer_id} did not reach {target} in {timeout}s (status: {info['status']})")
+    raise TimeoutError(
+        f"Computer {computer_id} did not reach {target} in {timeout}s (status: {info['status']})"
+    )
 
 
-def run_benchmark(client: Celesto, cpus: int, memory: int, run_index: int, verbose: bool = True) -> dict:
+def run_benchmark(
+    client: _CelestoClient, cpus: int, memory: int, run_index: int, verbose: bool = True
+) -> dict:
     """Run a single benchmark iteration."""
     results = {}
 
@@ -53,7 +62,9 @@ def run_benchmark(client: Celesto, cpus: int, memory: int, run_index: int, verbo
     # 1. Create computer
     if verbose:
         print("  Creating computer...", end=" ", flush=True)
-    create_time, computer = measure(lambda: client.computers.create(cpus=cpus, memory=memory))
+    create_time, computer = measure(
+        lambda: client.computers.create(cpus=cpus, memory=memory)
+    )
     computer_id = computer["id"]
     computer_name = computer.get("name", computer_id)
     results["create_api"] = round(create_time, 3)
@@ -80,7 +91,9 @@ def run_benchmark(client: Celesto, cpus: int, memory: int, run_index: int, verbo
     )
     results["first_exec"] = round(first_exec_time, 3)
     results["time_to_interact"] = round(create_time + boot_time + first_exec_time, 3)
-    first_ok = first_result.get("exit_code") == 0 and "hello" in first_result.get("stdout", "")
+    first_ok = first_result.get("exit_code") == 0 and "hello" in first_result.get(
+        "stdout", ""
+    )
     if verbose:
         status = "✓" if first_ok else "✗"
         print(f"{first_exec_time:.2f}s {status}")
@@ -95,11 +108,15 @@ def run_benchmark(client: Celesto, cpus: int, memory: int, run_index: int, verbo
     results["exec_min"] = round(min(exec_times), 3)
     results["exec_max"] = round(max(exec_times), 3)
     if verbose:
-        print(f"  Warm exec (5x): avg={results['exec_avg']:.3f}s p50={results['exec_p50']:.3f}s min={results['exec_min']:.3f}s max={results['exec_max']:.3f}s")
+        print(
+            f"  Warm exec (5x): avg={results['exec_avg']:.3f}s p50={results['exec_p50']:.3f}s min={results['exec_min']:.3f}s max={results['exec_max']:.3f}s"
+        )
 
     # 5. Complex exec (real workload)
     complex_time, complex_result = measure(
-        lambda: client.computers.exec(computer_id, "python3 -c \"import json; print(json.dumps({'ok': True}))\"")
+        lambda: client.computers.exec(
+            computer_id, "python3 -c \"import json; print(json.dumps({'ok': True}))\""
+        )
     )
     results["complex_exec"] = round(complex_time, 3)
     if verbose:
@@ -119,10 +136,20 @@ def run_benchmark(client: Celesto, cpus: int, memory: int, run_index: int, verbo
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Benchmark Celesto computer time-to-interact")
-    parser.add_argument("--runs", type=int, default=3, help="Number of benchmark iterations")
+    dotenv_path = find_dotenv(usecwd=True)
+    if dotenv_path:
+        load_dotenv(dotenv_path)
+
+    parser = argparse.ArgumentParser(
+        description="Benchmark Celesto computer time-to-interact"
+    )
+    parser.add_argument(
+        "--runs", type=int, default=3, help="Number of benchmark iterations"
+    )
     parser.add_argument("--cpus", type=int, default=1, help="vCPUs per computer")
-    parser.add_argument("--memory", type=int, default=1024, help="Memory in MB per computer")
+    parser.add_argument(
+        "--memory", type=int, default=1024, help="Memory in MB per computer"
+    )
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--api-key", type=str, default=None, help="Celesto API key")
     args = parser.parse_args()
@@ -137,11 +164,13 @@ def main():
         print(f"  CPUs:   {args.cpus}")
         print(f"  Memory: {args.memory} MB")
 
-    with Celesto(api_key=args.api_key) as client:
+    with _CelestoClient(api_key=args.api_key) as client:
         all_results = []
         for i in range(args.runs):
             try:
-                result = run_benchmark(client, args.cpus, args.memory, i, verbose=verbose)
+                result = run_benchmark(
+                    client, args.cpus, args.memory, i, verbose=verbose
+                )
                 all_results.append(result)
             except Exception as e:
                 if verbose:
@@ -152,13 +181,25 @@ def main():
     successful = [r for r in all_results if "error" not in r]
     if not successful:
         if args.json:
-            print(json.dumps({"error": "All runs failed", "runs": all_results}, indent=2))
+            print(
+                json.dumps({"error": "All runs failed", "runs": all_results}, indent=2)
+            )
         else:
             print("\n✗ All runs failed.")
         sys.exit(1)
 
     summary = {}
-    for key in ["time_to_running", "time_to_interact", "first_exec", "exec_avg", "exec_p50", "complex_exec", "create_api", "boot_wait", "delete_api"]:
+    for key in [
+        "time_to_running",
+        "time_to_interact",
+        "first_exec",
+        "exec_avg",
+        "exec_p50",
+        "complex_exec",
+        "create_api",
+        "boot_wait",
+        "delete_api",
+    ]:
         values = [r[key] for r in successful if key in r]
         if values:
             summary[key] = {
@@ -168,13 +209,26 @@ def main():
             }
 
     if args.json:
-        print(json.dumps({"summary": summary, "runs": all_results, "config": {"cpus": args.cpus, "memory": args.memory, "runs": args.runs}}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "summary": summary,
+                    "runs": all_results,
+                    "config": {
+                        "cpus": args.cpus,
+                        "memory": args.memory,
+                        "runs": args.runs,
+                    },
+                },
+                indent=2,
+            )
+        )
     else:
         print("\n" + "=" * 60)
         print("Summary")
         print("=" * 60)
         print(f"  {'Metric':<25} {'Avg':>8} {'Min':>8} {'Max':>8}")
-        print(f"  {'-'*25} {'-'*8} {'-'*8} {'-'*8}")
+        print(f"  {'-' * 25} {'-' * 8} {'-' * 8} {'-' * 8}")
         labels = {
             "time_to_running": "Time to running",
             "time_to_interact": "Time to interact",
@@ -189,7 +243,9 @@ def main():
         for key, label in labels.items():
             if key in summary:
                 s = summary[key]
-                print(f"  {label:<25} {s['avg']:>7.3f}s {s['min']:>7.3f}s {s['max']:>7.3f}s")
+                print(
+                    f"  {label:<25} {s['avg']:>7.3f}s {s['min']:>7.3f}s {s['max']:>7.3f}s"
+                )
 
         print(f"\n  Successful runs: {len(successful)}/{len(all_results)}")
 
