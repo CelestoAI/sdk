@@ -203,3 +203,6 @@ credentials*.json
 # Node / TypeScript SDK (ts/)
 node_modules/
 *.tsbuildinfo
+
+# Local web research artifacts
+.firecrawl/
