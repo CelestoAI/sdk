@@ -24,7 +24,7 @@ from typing import Any
 
 from dotenv import find_dotenv, load_dotenv
 
-from celesto.sdk.client import _CelestoClient
+from celesto import Computer
 
 
 def measure(fn, label: str = "") -> tuple[float, Any]:
@@ -35,104 +35,114 @@ def measure(fn, label: str = "") -> tuple[float, Any]:
     return elapsed, result
 
 
-def wait_for_status(
-    client: _CelestoClient, computer_id: str, target: str, timeout: float = 120
-) -> float:
+def wait_for_status(computer: Computer, target: str, timeout: float = 120) -> float:
     """Poll until computer reaches target status. Returns wait time."""
     start = time.perf_counter()
+    last_status = computer.status
     while time.perf_counter() - start < timeout:
-        info = client.computers.get(computer_id)
-        if info["status"] == target:
+        computer.refresh()
+        last_status = computer.status
+        if last_status == target:
             return time.perf_counter() - start
         time.sleep(0.5)
     raise TimeoutError(
-        f"Computer {computer_id} did not reach {target} in {timeout}s (status: {info['status']})"
+        f"Computer {computer.id} did not reach {target} in {timeout}s (status: {last_status})"
     )
 
 
 def run_benchmark(
-    client: _CelestoClient, cpus: int, memory: int, run_index: int, verbose: bool = True
+    cpus: int,
+    memory: int,
+    run_index: int,
+    *,
+    api_key: str | None = None,
+    verbose: bool = True,
 ) -> dict:
     """Run a single benchmark iteration."""
     results = {}
+    computer: Computer | None = None
 
     if verbose:
         print(f"\n--- Run {run_index + 1} ---")
 
-    # 1. Create computer
-    if verbose:
-        print("  Creating computer...", end=" ", flush=True)
-    create_time, computer = measure(
-        lambda: client.computers.create(cpus=cpus, memory=memory)
-    )
-    computer_id = computer["id"]
-    computer_name = computer.get("name", computer_id)
-    results["create_api"] = round(create_time, 3)
-    if verbose:
-        print(f"{computer_name} ({create_time:.2f}s)")
-
-    # 2. Wait for running
-    if verbose:
-        print("  Waiting for running...", end=" ", flush=True)
-    if computer["status"] != "running":
-        boot_time = wait_for_status(client, computer_id, "running")
-    else:
-        boot_time = 0.0
-    results["boot_wait"] = round(boot_time, 3)
-    results["time_to_running"] = round(create_time + boot_time, 3)
-    if verbose:
-        print(f"{boot_time:.2f}s (total: {create_time + boot_time:.2f}s)")
-
-    # 3. First exec (cold — includes any startup latency)
-    if verbose:
-        print("  First exec...", end=" ", flush=True)
-    first_exec_time, first_result = measure(
-        lambda: client.computers.exec(computer_id, "echo hello")
-    )
-    results["first_exec"] = round(first_exec_time, 3)
-    results["time_to_interact"] = round(create_time + boot_time + first_exec_time, 3)
-    first_ok = first_result.get("exit_code") == 0 and "hello" in first_result.get(
-        "stdout", ""
-    )
-    if verbose:
-        status = "✓" if first_ok else "✗"
-        print(f"{first_exec_time:.2f}s {status}")
-
-    # 4. Warm exec (multiple iterations for avg latency)
-    exec_times = []
-    for i in range(5):
-        t, r = measure(lambda: client.computers.exec(computer_id, "echo pong"))
-        exec_times.append(t)
-    results["exec_avg"] = round(statistics.mean(exec_times), 3)
-    results["exec_p50"] = round(statistics.median(exec_times), 3)
-    results["exec_min"] = round(min(exec_times), 3)
-    results["exec_max"] = round(max(exec_times), 3)
-    if verbose:
-        print(
-            f"  Warm exec (5x): avg={results['exec_avg']:.3f}s p50={results['exec_p50']:.3f}s min={results['exec_min']:.3f}s max={results['exec_max']:.3f}s"
+    try:
+        # 1. Create computer
+        if verbose:
+            print("  Creating computer...", end=" ", flush=True)
+        create_time, computer = measure(
+            lambda: Computer(cpus=cpus, memory=memory, api_key=api_key)
         )
+        computer_id = computer.id
+        computer_name = computer.name
+        results["create_api"] = round(create_time, 3)
+        if verbose:
+            print(f"{computer_name} ({create_time:.2f}s)")
 
-    # 5. Complex exec (real workload)
-    complex_time, complex_result = measure(
-        lambda: client.computers.exec(
-            computer_id, "python3 -c \"import json; print(json.dumps({'ok': True}))\""
+        # 2. Wait for running
+        if verbose:
+            print("  Waiting for running...", end=" ", flush=True)
+        if computer.status != "running":
+            boot_time = wait_for_status(computer, "running")
+        else:
+            boot_time = 0.0
+        results["boot_wait"] = round(boot_time, 3)
+        results["time_to_running"] = round(create_time + boot_time, 3)
+        if verbose:
+            print(f"{boot_time:.2f}s (total: {create_time + boot_time:.2f}s)")
+
+        # 3. First exec (cold — includes any startup latency)
+        if verbose:
+            print("  First exec...", end=" ", flush=True)
+        first_exec_time, first_result = measure(lambda: computer.run("echo hello"))
+        results["first_exec"] = round(first_exec_time, 3)
+        results["time_to_interact"] = round(
+            create_time + boot_time + first_exec_time, 3
         )
-    )
-    results["complex_exec"] = round(complex_time, 3)
-    if verbose:
-        print(f"  Complex exec (python3): {complex_time:.2f}s")
+        first_ok = first_result.get("exit_code") == 0 and "hello" in first_result.get(
+            "stdout", ""
+        )
+        if verbose:
+            status = "✓" if first_ok else "✗"
+            print(f"{first_exec_time:.2f}s {status}")
 
-    # 6. Delete
-    if verbose:
-        print("  Deleting...", end=" ", flush=True)
-    delete_time, _ = measure(lambda: client.computers.delete(computer_id))
-    results["delete_api"] = round(delete_time, 3)
-    if verbose:
-        print(f"{delete_time:.2f}s")
+        # 4. Warm exec (multiple iterations for avg latency)
+        exec_times = []
+        for _ in range(5):
+            t, _ = measure(lambda: computer.run("echo pong"))
+            exec_times.append(t)
+        results["exec_avg"] = round(statistics.mean(exec_times), 3)
+        results["exec_p50"] = round(statistics.median(exec_times), 3)
+        results["exec_min"] = round(min(exec_times), 3)
+        results["exec_max"] = round(max(exec_times), 3)
+        if verbose:
+            print(
+                f"  Warm exec (5x): avg={results['exec_avg']:.3f}s p50={results['exec_p50']:.3f}s min={results['exec_min']:.3f}s max={results['exec_max']:.3f}s"
+            )
 
-    results["computer_name"] = computer_name
-    results["computer_id"] = computer_id
-    return results
+        # 5. Complex exec (real workload)
+        complex_time, _ = measure(
+            lambda: computer.run(
+                "python3 -c \"import json; print(json.dumps({'ok': True}))\""
+            )
+        )
+        results["complex_exec"] = round(complex_time, 3)
+        if verbose:
+            print(f"  Complex exec (python3): {complex_time:.2f}s")
+
+        # 6. Delete
+        if verbose:
+            print("  Deleting...", end=" ", flush=True)
+        delete_time, _ = measure(computer.delete)
+        results["delete_api"] = round(delete_time, 3)
+        if verbose:
+            print(f"{delete_time:.2f}s")
+
+        results["computer_name"] = computer_name
+        results["computer_id"] = computer_id
+        return results
+    finally:
+        if computer is not None:
+            computer.close()
 
 
 def main():
@@ -164,18 +174,21 @@ def main():
         print(f"  CPUs:   {args.cpus}")
         print(f"  Memory: {args.memory} MB")
 
-    with _CelestoClient(api_key=args.api_key) as client:
-        all_results = []
-        for i in range(args.runs):
-            try:
-                result = run_benchmark(
-                    client, args.cpus, args.memory, i, verbose=verbose
-                )
-                all_results.append(result)
-            except Exception as e:
-                if verbose:
-                    print(f"  ✗ Run {i + 1} failed: {e}")
-                all_results.append({"error": str(e)})
+    all_results = []
+    for i in range(args.runs):
+        try:
+            result = run_benchmark(
+                args.cpus,
+                args.memory,
+                i,
+                api_key=args.api_key,
+                verbose=verbose,
+            )
+            all_results.append(result)
+        except Exception as e:
+            if verbose:
+                print(f"  ✗ Run {i + 1} failed: {e}")
+            all_results.append({"error": str(e)})
 
     # Aggregate
     successful = [r for r in all_results if "error" not in r]

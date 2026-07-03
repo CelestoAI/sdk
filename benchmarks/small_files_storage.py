@@ -264,11 +264,20 @@ def validate_required_mount(target: pathlib.Path, require_mount: str | None) -> 
         return
     mount = pathlib.Path(require_mount)
     if not path_is_within(target, mount):
-        return
+        raise RuntimeError(
+            f"Target path {target} is not under required mount {mount}. "
+            "Pass an empty require_mount to disable this check."
+        )
     if not mount.exists():
         raise RuntimeError(f"Required mount path does not exist: {mount}")
     if not os.path.ismount(mount):
         raise RuntimeError(f"Required mount path is not mounted: {mount}")
+
+
+def validate_target_subdir(target_subdir: str) -> None:
+    path = pathlib.Path(target_subdir)
+    if not target_subdir or path.is_absolute() or any(part in ("", ".", "..") for part in path.parts):
+        raise ValueError("target_subdir must be a non-empty relative path without . or ..")
 
 
 def run(args: dict[str, Any]) -> dict[str, Any]:
@@ -295,11 +304,10 @@ def run(args: dict[str, Any]) -> dict[str, Any]:
 
     try:
         persistent_target = pathlib.Path(args["target"])
-        validate_required_mount(persistent_target, args.get("require_mount"))
         target_subdir = str(args.get("target_subdir") or "")
-        effective_persistent_target = (
-            persistent_target / target_subdir if target_subdir else persistent_target
-        )
+        validate_target_subdir(target_subdir)
+        effective_persistent_target = persistent_target / target_subdir
+        validate_required_mount(effective_persistent_target, args.get("require_mount"))
         targets: list[tuple[str, pathlib.Path]] = [
             ("persistent", effective_persistent_target)
         ]
@@ -413,7 +421,7 @@ def upload_text_file(
     run_checked(
         computer,
         f"rm -f {quoted_b64_path} {shlex.quote(remote_path)}",
-        timeout=30,
+        timeout=timeout,
         label=f"cleanup {remote_path}",
     )
 
@@ -422,7 +430,7 @@ def upload_text_file(
         run_checked(
             computer,
             f"cat >> {quoted_b64_path} <<'EOF'\n{chunk}\nEOF",
-            timeout=30,
+            timeout=timeout,
             label=f"upload chunk {index // chunk_size + 1} for {remote_path}",
         )
 
@@ -436,7 +444,7 @@ def upload_text_file(
     run_checked(
         computer,
         decode_command,
-        timeout=30,
+        timeout=timeout,
         label=f"decode {remote_path}",
     )
 
@@ -616,7 +624,7 @@ def main() -> None:
     parser.add_argument(
         "--target-subdir",
         default=DEFAULT_TARGET_SUBDIR,
-        help="Benchmark subdirectory under --target; pass an empty string to write directly under --target",
+        help="Non-empty relative benchmark subdirectory under --target",
     )
     parser.add_argument(
         "--source-dir",
