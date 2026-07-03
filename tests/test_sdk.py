@@ -1,7 +1,9 @@
 import httpx
 import pytest
 
-from celesto.sdk import Celesto
+import celesto
+from celesto import Computer
+from celesto.sdk.client import _CelestoClient
 from celesto.sdk.exceptions import CelestoValidationError
 
 
@@ -24,11 +26,171 @@ class DummySession:
         pass
 
 
-def test_sdk_exposes_service_clients():
-    client = Celesto("test-key", base_url="http://localhost:8500/v1")
+def test_top_level_sdk_exports_new_computer_api_only():
+    import celesto.sdk as public_sdk
+
+    assert celesto.Computer is Computer
+    assert public_sdk.Computer is Computer
+    import celesto.sdk.client as internal_client
+
+    assert not hasattr(celesto, "Celesto")
+    assert not hasattr(public_sdk, "Celesto")
+    assert not hasattr(internal_client, "Celesto")
+
+
+def test_internal_client_still_supports_cli_service_operations():
+    client = _CelestoClient("test-key", base_url="http://localhost:8500/v1")
     assert hasattr(client, "deployment")
     assert hasattr(client, "gatekeeper")
     assert hasattr(client, "computers")
+
+
+def test_computer_convenience_api_creates_and_supports_mapping_access():
+    session = DummySession(
+        status_code=201,
+        payload={
+            "id": "cmp_1",
+            "name": "curie",
+            "status": "creating",
+            "vcpus": 1,
+            "ram_mb": 512,
+            "disk_size_mb": 2048,
+            "image": "ubuntu-desktop-24.04",
+            "template_id": "scratch",
+            "created_at": "2026-06-07T00:00:00Z",
+        },
+    )
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    computer = Computer(cpus=1, memory=512, disk="2gb", client=client)
+
+    assert computer.name == "curie"
+    assert computer["name"] == "curie"
+    assert dict(computer)["id"] == "cmp_1"
+    assert session.calls[0]["json"] == {
+        "vcpus": 1,
+        "ram_mb": 512,
+        "disk_size_mb": 2048,
+    }
+
+
+def test_computer_convenience_api_runs_lifecycle_and_publishes_port():
+    session = DummySession(
+        status_code=201,
+        payload={
+            "id": "cmp_1",
+            "name": "curie",
+            "status": "running",
+            "vcpus": 1,
+            "ram_mb": 512,
+            "disk_size_mb": 2048,
+            "image": "ubuntu-desktop-24.04",
+            "template_id": "scratch",
+            "created_at": "2026-06-07T00:00:00Z",
+        },
+    )
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+    computer = Computer(client=client)
+
+    session.payload = {"exit_code": 0, "stdout": "hello\n", "stderr": ""}
+    result = computer.run("echo hello", timeout=60)
+
+    assert result["stdout"] == "hello\n"
+    assert session.calls[1]["url"] == "https://api.example.test/v1/computers/cmp_1/exec"
+    assert session.calls[1]["json"] == {"command": "echo hello", "timeout": 60}
+
+    session.payload = {
+        "id": "cmp_1",
+        "name": "curie",
+        "status": "stopped",
+        "vcpus": 1,
+        "ram_mb": 512,
+        "disk_size_mb": 2048,
+        "image": "ubuntu-desktop-24.04",
+        "template_id": "scratch",
+        "created_at": "2026-06-07T00:00:00Z",
+    }
+    assert computer.stop().status == "stopped"
+
+    session.payload = {
+        "id": "cpp_123",
+        "computer_id": "cmp_1",
+        "port": 8080,
+        "url": "https://p-test.celesto.ai",
+        "status": "published",
+        "created_at": "2026-06-07T00:00:00Z",
+    }
+    assert computer.publish_port(8080) == "https://p-test.celesto.ai"
+    assert session.calls[-1]["url"] == (
+        "https://api.example.test/v1/computers/cmp_1/published-ports"
+    )
+
+
+def test_computer_static_list_and_templates_do_not_require_public_client():
+    session = DummySession(
+        payload={
+            "computers": [
+                {
+                    "id": "cmp_1",
+                    "name": "curie",
+                    "status": "running",
+                    "vcpus": 1,
+                    "ram_mb": 512,
+                    "disk_size_mb": 2048,
+                    "image": "ubuntu-desktop-24.04",
+                    "template_id": "scratch",
+                    "created_at": "2026-06-07T00:00:00Z",
+                }
+            ],
+            "count": 1,
+        },
+    )
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    computers = Computer.list(status="running", template_id="scratch", client=client)
+
+    assert computers[0]["name"] == "curie"
+    assert session.calls[0]["params"] == {
+        "status": "running",
+        "template_id": "scratch",
+    }
+
+    session.payload = [
+        {
+            "id": "scratch",
+            "display_name": "Scratch",
+            "description": "Minimal VM",
+            "default_vcpus": 1,
+            "default_ram_mb": 512,
+            "default_disk_size_mb": 7168,
+            "version": "latest",
+            "experimental": False,
+        }
+    ]
+    templates = Computer.list_templates(client=client)
+
+    assert templates[0]["id"] == "scratch"
+    assert session.calls[1]["url"] == "https://api.example.test/v1/computers/templates"
+
+
+def test_computers_create_accepts_friendly_disk_alias():
+    session = DummySession(status_code=201, payload={})
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    client.computers.create(disk="1.5gb")
+
+    assert session.calls[0]["json"] == {"disk_size_mb": 1536}
+
+
+def test_computers_create_rejects_conflicting_disk_aliases():
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+
+    with pytest.raises(CelestoValidationError):
+        client.computers.create(disk="2gb", disk_size_mb=1024)
 
 
 def test_computers_create_sends_only_explicit_overrides():
@@ -47,7 +209,7 @@ def test_computers_create_sends_only_explicit_overrides():
             "created_at": "2026-06-07T00:00:00Z",
         },
     )
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
 
     result = client.computers.create(
@@ -68,7 +230,7 @@ def test_computers_create_sends_only_explicit_overrides():
 
 def test_computers_create_with_no_args_uses_backend_defaults():
     session = DummySession(status_code=201, payload={})
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
 
     client.computers.create()
@@ -77,7 +239,7 @@ def test_computers_create_with_no_args_uses_backend_defaults():
 
 
 def test_computers_create_rejects_conflicting_aliases():
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
 
     with pytest.raises(CelestoValidationError):
         client.computers.create(cpus=1, vcpus=2)
@@ -101,7 +263,7 @@ def test_computers_list_templates_hits_backend_endpoint():
             }
         ]
     )
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
 
     templates = client.computers.list_templates()
@@ -113,7 +275,7 @@ def test_computers_list_templates_hits_backend_endpoint():
 
 def test_computers_list_preserves_default_unfiltered_request():
     session = DummySession(payload={"computers": [], "count": 0})
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
 
     result = client.computers.list()
@@ -126,7 +288,7 @@ def test_computers_list_preserves_default_unfiltered_request():
 
 def test_computers_list_sends_filters_as_query_params():
     session = DummySession(payload={"computers": [], "count": 0})
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
 
     client.computers.list(
@@ -146,7 +308,7 @@ def test_computers_list_sends_filters_as_query_params():
 
 def test_computers_exec_uses_per_request_read_timeout_without_mutating_default():
     session = DummySession(payload={"exit_code": 0, "stdout": "ok\n", "stderr": ""})
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
 
     result = client.computers.exec("cmp_123", "sleep 1", timeout=60)
@@ -162,7 +324,7 @@ def test_computers_exec_uses_per_request_read_timeout_without_mutating_default()
 
 def test_computers_exec_aggregates_stream_for_long_timeouts(monkeypatch):
     session = DummySession(payload={"exit_code": 0, "stdout": "buffered\n"})
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
     stream_calls = []
 
@@ -196,7 +358,7 @@ def test_computers_exec_aggregates_stream_for_long_timeouts(monkeypatch):
 
 def test_computers_list_command_history_hits_backend_endpoint():
     session = DummySession(payload={"commands": []})
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
 
     result = client.computers.list_command_history("cmp_123", limit=10)
@@ -221,7 +383,7 @@ def test_computers_publish_port_hits_backend_endpoint():
             "created_at": "2026-06-07T00:00:00Z",
         }
     )
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
 
     result = client.computers.publish_port("curie", port=8000)
@@ -237,7 +399,7 @@ def test_computers_publish_port_hits_backend_endpoint():
 
 def test_computers_list_published_ports_hits_backend_endpoint():
     session = DummySession(payload=[])
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
 
     result = client.computers.list_published_ports("cmp_123")
@@ -260,7 +422,7 @@ def test_computers_unpublish_port_hits_backend_endpoint():
             "created_at": None,
         }
     )
-    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
 
     result = client.computers.unpublish_port("cmp_123", port=8000)

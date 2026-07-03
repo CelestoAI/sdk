@@ -15,6 +15,22 @@ export interface ComputerConnectionInfo {
   accessUrl?: string;
 }
 
+export type PublishedPortStatus =
+  | "publishing"
+  | "published"
+  | "unpublishing"
+  | "unpublished"
+  | "error";
+
+export interface ComputerPublishedPortInfo {
+  id?: string | null;
+  computerId: string;
+  port: number;
+  url?: string | null;
+  status: PublishedPortStatus;
+  createdAt?: string | null;
+}
+
 export interface ComputerInfo {
   id: string;
   name: string;
@@ -26,6 +42,7 @@ export interface ComputerInfo {
   templateId: string;
   templateVersion?: string | null;
   connection?: ComputerConnectionInfo;
+  publishedPorts?: ComputerPublishedPortInfo[];
   lastError?: string | null;
   createdAt: string;
   stoppedAt?: string | null;
@@ -34,6 +51,17 @@ export interface ComputerInfo {
 export interface ComputerListResponse {
   computers: ComputerInfo[];
   count: number;
+}
+
+export interface ListComputersParams {
+  /** Optional status filter, such as "running" or "stopped". */
+  status?: ComputerStatus;
+  /** Optional template filter, such as "coding-agent". */
+  templateId?: string;
+  /** Optional project ID filter. */
+  projectId?: string;
+  /** Optional maximum number of computers to return. */
+  limit?: number;
 }
 
 export interface ComputerExecResponse {
@@ -62,6 +90,8 @@ export interface CreateComputerParams {
   memory?: number;
   /** Memory in MB (512-32768). */
   ramMb?: number;
+  /** Disk size as MB or a string like "2gb". Alias for diskSizeMb. */
+  disk?: number | string;
   /** Disk size in MB (512-51200). */
   diskSizeMb?: number;
   /** Legacy OS image selector. */
@@ -82,7 +112,7 @@ export interface ExecParams {
  *
  * Use with any WebSocket library:
  * ```ts
- * const conn = await celesto.computers.getTerminalConnection("my-computer");
+ * const conn = await client.getTerminalConnection("my-computer");
  * const ws = new WebSocket(conn.url, { headers: conn.headers });
  * ws.on("open", () => ws.send(conn.firstMessage));
  * ```

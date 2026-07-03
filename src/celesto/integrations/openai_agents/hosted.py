@@ -24,7 +24,7 @@ from celesto.integrations.openai_agents.common import (
     resolve_snapshot,
     timeout_seconds,
 )
-from celesto.sdk.client import Celesto
+from celesto.sdk.client import _CelestoClient
 
 
 class CelestoSandboxClientOptions(BaseSandboxClientOptions):
@@ -64,7 +64,9 @@ class CelestoSandboxSession(CommandBackedSession):
 
     state: CelestoSandboxSessionState
 
-    def __init__(self, *, state: CelestoSandboxSessionState, client: Celesto) -> None:
+    def __init__(
+        self, *, state: CelestoSandboxSessionState, client: _CelestoClient
+    ) -> None:
         self.state = state
         self._client = client
         self._running = False
@@ -75,7 +77,7 @@ class CelestoSandboxSession(CommandBackedSession):
         cls,
         state: CelestoSandboxSessionState,
         *,
-        client: Celesto,
+        client: _CelestoClient,
     ) -> "CelestoSandboxSession":
         return cls(state=state, client=client)
 
@@ -104,14 +106,14 @@ class CelestoSandboxSession(CommandBackedSession):
             if last_status == "error":
                 raise RuntimeError(
                     f"Computer {self.state.computer_id} could not start. "
-                    f"Delete it with client.computers.delete('{self.state.computer_id}') and create a new one."
+                    f"Delete it with Computer.get('{self.state.computer_id}').delete() and create a new one."
                 )
 
             await asyncio.sleep(delay)
 
         raise RuntimeError(
             f"Computer {self.state.computer_id} is not ready yet. "
-            f"Check it with client.computers.get('{self.state.computer_id}') and try again."
+            f"Check it with Computer.get('{self.state.computer_id}') and try again."
         )
 
     async def _ensure_backend_started(self) -> None:
@@ -184,11 +186,11 @@ class CelestoSandboxClient(BaseSandboxClient[CelestoSandboxClientOptions | None]
     def __init__(
         self,
         *,
-        client: Celesto | None = None,
+        client: _CelestoClient | None = None,
         api_key: str | None = None,
         base_url: str | None = None,
     ) -> None:
-        self._client = client or Celesto(api_key=api_key, base_url=base_url)
+        self._client = client or _CelestoClient(api_key=api_key, base_url=base_url)
 
     async def create(
         self,

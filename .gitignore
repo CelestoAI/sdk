@@ -200,6 +200,6 @@ credentials*.json
 .idea/
 *.skills/
 
-# Node / JS SDK (js/)
+# Node / TypeScript SDK (ts/)
 node_modules/
 *.tsbuildinfo

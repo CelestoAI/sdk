@@ -14,7 +14,7 @@ from keyring.errors import KeyringError
 from rich.console import Console
 from typing_extensions import Annotated
 
-from .sdk.client import Celesto
+from .sdk.client import _CelestoClient
 
 DEFAULT_BASE_URL = "https://api.celesto.ai/v1"
 KEYRING_SERVICE = "celesto"
@@ -220,7 +220,7 @@ def delete_api_key(base_url: str | None = None) -> None:
 
 def validate_api_key(api_key: str, base_url: str | None = None) -> None:
     """Check that the API key can call Celesto."""
-    client = Celesto(api_key=api_key, base_url=_resolve_base_url(base_url))
+    client = _CelestoClient(api_key=api_key, base_url=_resolve_base_url(base_url))
     try:
         client.computers.list_templates()
     finally:

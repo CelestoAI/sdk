@@ -41,7 +41,7 @@ class CelestoAuthenticationError(CelestoError):
 
     Example:
         try:
-            client = Celesto("invalid-key")
+            client = _CelestoClient("invalid-key")
             client.deployment.list()
         except CelestoAuthenticationError as e:
             print("Please check your API key")

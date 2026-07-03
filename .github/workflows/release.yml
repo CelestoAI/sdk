@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: js
+        working-directory: ts
 
     steps:
       - name: Check out repository
@@ -51,7 +51,7 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
           cache: "npm"
-          cache-dependency-path: js/package-lock.json
+          cache-dependency-path: ts/package-lock.json
 
       - name: Update npm
         run: npm install -g npm@^11.5.1
