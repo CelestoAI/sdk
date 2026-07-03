@@ -221,8 +221,8 @@ def start_juicefs_profile(path: pathlib.Path, *, enabled: bool) -> subprocess.Po
             stderr=subprocess.PIPE,
             text=True,
         )
-    except Exception:
-        return None
+    except Exception as exc:
+        raise RuntimeError(f"failed to start juicefs profile for {path}: {exc}") from exc
 
 
 def stop_process(process: subprocess.Popen[str] | None) -> dict[str, Any] | None:
@@ -249,6 +249,7 @@ def delete_target(target_dir: pathlib.Path, *, mount: dict[str, Any], delete_mod
             check=False,
             capture_output=True,
             text=True,
+            timeout=120,
         )
         seconds = time.perf_counter() - start
         result = {
@@ -258,13 +259,17 @@ def delete_target(target_dir: pathlib.Path, *, mount: dict[str, Any], delete_mod
             "stdout": completed.stdout[-10000:],
             "stderr": completed.stderr[-10000:],
         }
-        if completed.returncode != 0 and target_dir.exists():
+        if completed.returncode != 0:
             raise RuntimeError(
                 f"juicefs rmr failed for {target_dir}: {completed.stderr or completed.stdout}"
             )
+        if target_dir.exists():
+            raise RuntimeError(f"juicefs rmr reported success but left target behind: {target_dir}")
         return result
 
-    shutil.rmtree(target_dir, ignore_errors=True)
+    shutil.rmtree(target_dir)
+    if target_dir.exists():
+        raise RuntimeError(f"python rmtree left target behind: {target_dir}")
     return {
         "method": "python-rmtree",
         "requested_method": delete_mode,
