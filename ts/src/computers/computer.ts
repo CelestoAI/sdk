@@ -8,6 +8,8 @@ import {
   ComputerStatus,
   CreateComputerParams,
   ExecParams,
+  ListComputersParams,
+  SandboxTemplateInfo,
 } from "./types";
 
 const defaultConfig = (): ClientConfig => ({
@@ -36,6 +38,19 @@ export class Computer {
     const client = new ComputersClient(config);
     const info = await client.get(computerIdOrName);
     return new Computer(client, info);
+  }
+
+  /** List computers in the current account. */
+  static async list(params: ListComputersParams = {}, config: ClientConfig = defaultConfig()): Promise<Computer[]> {
+    const client = new ComputersClient(config);
+    const response = await client.list(params);
+    return response.computers.map((info) => new Computer(client, info));
+  }
+
+  /** List available computer templates. */
+  static async listTemplates(config: ClientConfig = defaultConfig()): Promise<SandboxTemplateInfo[]> {
+    const client = new ComputersClient(config);
+    return client.listTemplates();
   }
 
   /** Wrap an existing API response in the convenience object. */

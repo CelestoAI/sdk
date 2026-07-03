@@ -15,7 +15,7 @@ from rich.table import Table
 from typing_extensions import Annotated
 
 from .deployment import _get_api_key
-from .sdk.client import Celesto
+from .sdk.client import _CelestoClient
 from .sdk.exceptions import CelestoServerError
 
 app = typer.Typer(help="Create, manage, and connect to sandboxed computers.")
@@ -40,10 +40,10 @@ def _terminal_dimensions() -> tuple[int, int]:
     return size.lines, size.columns
 
 
-def _get_client(api_key: str | None = None) -> Celesto:
+def _get_client(api_key: str | None = None) -> _CelestoClient:
     """Create SDK client with resolved API key."""
     key = _get_api_key(api_key)
-    return Celesto(api_key=key)
+    return _CelestoClient(api_key=key)
 
 
 def _status_color(status: str) -> str:
@@ -119,7 +119,9 @@ def _is_stopped_conflict(error: CelestoServerError) -> bool:
     return "stopped" in message or "409" in message
 
 
-def _resume_computer(client: Celesto, computer_id: str, *, quiet: bool = False) -> None:
+def _resume_computer(
+    client: _CelestoClient, computer_id: str, *, quiet: bool = False
+) -> None:
     if not quiet:
         console.print("[yellow]Computer is stopped. Resuming...[/yellow]")
     client.computers.start(computer_id)
@@ -137,7 +139,7 @@ def _resume_computer(client: Celesto, computer_id: str, *, quiet: bool = False) 
 
 
 def _exec_with_resume(
-    client: Celesto,
+    client: _CelestoClient,
     computer_id: str,
     command: str,
     *,
@@ -154,7 +156,7 @@ def _exec_with_resume(
 
 
 def _exec_stream_with_resume(
-    client: Celesto,
+    client: _CelestoClient,
     computer_id: str,
     command: str,
     *,

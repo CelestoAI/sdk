@@ -96,11 +96,9 @@ List available templates:
 Create a file named `list-templates.mjs`:
 
 ```js
-import { Celesto } from "@celestoai/sdk";
+import { Computer } from "@celestoai/sdk";
 
-const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
-
-const templates = await celesto.computers.listTemplates();
+const templates = await Computer.listTemplates();
 for (const template of templates) {
   console.log(template.id, template.defaultRamMb);
 }
@@ -147,7 +145,7 @@ shown by the Celesto command-line tool: `celesto computer list`.
 
 | Method | What it does |
 | --- | --- |
-| `celesto.computers.list()` | List computers in your account |
+| `Computer.list()` | List computers in your account |
 | `Computer.get(computerId)` | Get one computer by name or ID |
 | `computer.stop()` | Stop a running computer |
 | `computer.start()` | Start a stopped computer |
@@ -226,7 +224,8 @@ Full Gatekeeper docs: https://docs.celesto.ai/celesto-sdk/gatekeeper
 | `headers` | Extra headers to send with every request |
 
 Pass these options as the second argument to `Computer.create()` or
-`Computer.get()`, or to `new Celesto(...)` when using service clients.
+`Computer.get()`. Gatekeeper clients accept the same options in their
+constructor.
 
 JWT is a signed login token. Most users should use a Celesto API key.
 
@@ -243,7 +242,7 @@ The SDK exports these error classes:
 ## Develop Locally
 
 If you are contributing and have `npm` installed, run these commands from the
-repository's `js` directory:
+repository's `ts` directory:
 
 ```bash
 npm install

@@ -43,13 +43,13 @@ class _BaseConnection:
 
     Example:
         # Explicit API key
-        client = Celesto(api_key="your-api-key")
+        client = _CelestoClient(api_key="your-api-key")
 
         # From environment variable
-        client = Celesto()
+        client = _CelestoClient()
 
         # With context manager for automatic cleanup
-        with Celesto() as client:
+        with _CelestoClient() as client:
             deployments = client.deployment.list()
     """
 
@@ -70,7 +70,7 @@ class _BaseConnection:
             timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
         )
 
-    def __enter__(self) -> "Celesto":
+    def __enter__(self) -> "_CelestoClient":
         """Enter context manager."""
         return self  # type: ignore[return-value]
 
@@ -300,7 +300,7 @@ class Deployment(_BaseClient):
     applications.
 
     Example:
-        client = Celesto()
+        client = _CelestoClient()
 
         # Deploy an agent
         result = client.deployment.deploy(
@@ -571,7 +571,7 @@ class GateKeeper(_BaseClient):
         4. List files with list_drive_files()
 
     Example:
-        client = Celesto()
+        client = _CelestoClient()
 
         # Initiate connection for a user
         result = client.gatekeeper.connect(
@@ -856,12 +856,7 @@ class Computers(_BaseClient):
     Provides methods to create, list, execute commands on, and manage
     virtual machine sandboxes for AI agents and development.
 
-    Example:
-        >>> with Celesto() as client:
-        ...     computer = client.computers.create()
-        ...     result = client.computers.exec(computer["id"], "uname -a")
-        ...     print(result["stdout"])
-        ...     client.computers.delete(computer["id"])
+    Internal wrapper for the public ``Computer`` resource class.
     """
 
     def create(
@@ -1205,13 +1200,12 @@ class Computers(_BaseClient):
         return self._request("DELETE", f"/computers/{computer_id}")
 
 
-class Celesto(_BaseConnection):
-    """Main client for the Celesto AI platform.
+class _CelestoClient(_BaseConnection):
+    """Internal service client used by the CLI and high-level resource classes.
 
-    Celesto provides access to all Celesto services through a unified interface:
-    - deployment: Deploy and manage AI agents
-    - gatekeeper: Manage delegated access to user resources
-    - computers: Create and manage sandboxed virtual machines
+    Public computer code should use ``from celesto import Computer``. This
+    lower-level client keeps shared HTTP behavior in one place for CLI commands,
+    integrations, and resource wrappers.
 
     The client automatically reads API keys from the CELESTO_API_KEY environment
     variable if not provided explicitly. Use as a context manager for automatic
@@ -1230,7 +1224,7 @@ class Celesto(_BaseConnection):
         import os
         os.environ["CELESTO_API_KEY"] = "your-api-key"
 
-        with Celesto() as client:
+        with _CelestoClient() as client:
             # Deploy an agent
             result = client.deployment.deploy(
                 folder=Path("./my-app"),

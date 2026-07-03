@@ -20,7 +20,7 @@ Use Celesto when you want to:
 
 This README covers the Python SDK, which is a code package, and the CLI, which
 is the `celesto` command. The JavaScript and TypeScript SDK is also available as
-[`@celestoai/sdk`](./js/README.md).
+[`@celestoai/sdk`](./ts/README.md).
 
 ## Install
 
@@ -60,7 +60,7 @@ Linux machines without a credential store, it saves the key in
 `$XDG_CONFIG_HOME/celesto/credentials.json` when `XDG_CONFIG_HOME` is set, or
 `~/.config/celesto/credentials.json` otherwise, with user-only file
 permissions. SDK code does not read that saved CLI key; it reads
-`CELESTO_API_KEY` or the `api_key` value you pass to `Computer` or `Celesto`.
+`CELESTO_API_KEY` or the `api_key` value you pass to `Computer`.
 
 ## Create a Computer from Python
 
@@ -250,7 +250,7 @@ try {
 }
 ```
 
-See the [JavaScript and TypeScript README](./js/README.md) for Node.js
+See the [JavaScript and TypeScript README](./ts/README.md) for Node.js
 requirements, Gatekeeper examples, and terminal connection details.
 
 ## Python Computers API
@@ -281,12 +281,11 @@ when you want a computer that already has extra tools installed. For example,
 List available templates:
 
 ```python
-from celesto import Celesto
+from celesto import Computer
 
-with Celesto() as client:
-    templates = client.computers.list_templates()
-    for template in templates:
-        print(template["id"], template.get("preinstalled_tools", []))
+templates = Computer.list_templates()
+for template in templates:
+    print(template["id"], template.get("preinstalled_tools", []))
 ```
 
 Template responses may include metadata such as aliases, capabilities,
@@ -336,18 +335,17 @@ user. The SDK does not yet expose a user selector.
 Filter a list when you only want matching computers:
 
 ```python
-from celesto import Celesto
+from celesto import Computer
 
-with Celesto() as client:
-    result = client.computers.list(status="running", template_id="browser-agent")
-    for computer in result["computers"]:
-        print(computer["name"])
+computers = Computer.list(status="running", template_id="browser-agent")
+for computer in computers:
+    print(computer["name"])
 ```
 
 | Method | What it does |
 | --- | --- |
-| `client.computers.list()` | List computers in your account |
-| `client.computers.list(status="running", template_id="browser-agent", project_id="proj_123", limit=10)` | List matching computers |
+| `Computer.list()` | List computers in your account |
+| `Computer.list(status="running", template_id="browser-agent", project_id="proj_123", limit=10)` | List matching computers |
 | `Computer.get(computer_id)` | Get one computer by name or ID |
 | `computer.stop()` | Stop a running computer |
 | `computer.start()` | Start a stopped computer |
@@ -410,14 +408,9 @@ celesto computer create --disk-size-mb 15360 --json
 
 ## Other Python SDK APIs
 
-The Python SDK also includes:
-
-- `client.deployment` for deploying agents to Celesto.
-- `client.gatekeeper` for connecting user-approved external resources, such as
-  Google Drive.
-
-See the [full documentation](https://docs.celesto.ai/celesto-sdk) for these
-advanced APIs.
+The high-level SDK now exposes computers directly through `Computer`. Deployment
+and Gatekeeper helpers are still available from the CLI while their direct SDK
+resource APIs are being updated to match this style.
 
 ## OpenAI Agents SDK Sandboxes
 

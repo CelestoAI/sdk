@@ -11,7 +11,7 @@ from rich.console import Console
 from typing_extensions import Annotated
 
 from .auth import load_api_key
-from .sdk.client import Celesto
+from .sdk.client import _CelestoClient
 
 console = Console()
 
@@ -90,7 +90,9 @@ def deploy(
             "--name",
             "-n",
             help="Name for your deployment",
-            default_factory=lambda: f"my-agent-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            default_factory=lambda: (
+                f"my-agent-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            ),
         ),
     ],
     description: Optional[str] = typer.Option(
@@ -152,7 +154,7 @@ def deploy(
             f"🚀 [bold cyan]Deploying[/bold cyan] '{name}' from {folder_path}..."
         )
 
-        client = Celesto(final_api_key)
+        client = _CelestoClient(final_api_key)
         result = client.deployment.deploy(
             folder=folder_path,
             name=name,
@@ -203,7 +205,7 @@ def list_deployments(
 
     # List deployments
     try:
-        client = Celesto(final_api_key)
+        client = _CelestoClient(final_api_key)
         deployments = client.deployment.list()
 
         if not deployments:

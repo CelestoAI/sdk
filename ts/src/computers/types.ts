@@ -53,6 +53,17 @@ export interface ComputerListResponse {
   count: number;
 }
 
+export interface ListComputersParams {
+  /** Optional status filter, such as "running" or "stopped". */
+  status?: ComputerStatus;
+  /** Optional template filter, such as "coding-agent". */
+  templateId?: string;
+  /** Optional project ID filter. */
+  projectId?: string;
+  /** Optional maximum number of computers to return. */
+  limit?: number;
+}
+
 export interface ComputerExecResponse {
   exitCode: number;
   stdout: string;
@@ -101,7 +112,7 @@ export interface ExecParams {
  *
  * Use with any WebSocket library:
  * ```ts
- * const conn = await celesto.computers.getTerminalConnection("my-computer");
+ * const conn = await client.getTerminalConnection("my-computer");
  * const ws = new WebSocket(conn.url, { headers: conn.headers });
  * ws.on("open", () => ws.send(conn.firstMessage));
  * ```

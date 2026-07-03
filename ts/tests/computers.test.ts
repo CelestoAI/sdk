@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import * as sdk from "../src/index";
 import { Computer } from "../src/computers/computer";
 import { ComputersClient } from "../src/computers/client";
 import type { ClientConfig } from "../src/core/config";
@@ -49,6 +50,11 @@ const makeConfig = (fetchMock: typeof fetch): ClientConfig => ({
 });
 
 describe("ComputersClient", () => {
+  it("top-level package exports Computer API but not the old Celesto client", () => {
+    assert.equal(sdk.Computer, Computer);
+    assert.equal("Celesto" in sdk, false);
+  });
+
   it("create() sends explicit resource/template fields and unwraps snake_case response", async () => {
     const { fetch, calls } = makeFetchMock(() => ({
       status: 201,
@@ -228,6 +234,49 @@ describe("ComputersClient", () => {
     assert.equal(templates[0]!.id, "coding-agent");
     assert.equal(templates[0]!.displayName, "Coding Agent");
     assert.equal(templates[0]!.defaultDiskSizeMb, 15360);
+  });
+
+  it("Computer static list and listTemplates cover listing without the old Celesto client", async () => {
+    const { fetch, calls } = makeFetchMock((call) => ({
+      status: 200,
+      body: call.url.includes("/templates")
+        ? [
+            {
+              id: "scratch",
+              display_name: "Scratch",
+              description: "Minimal VM",
+              default_vcpus: 1,
+              default_ram_mb: 512,
+              default_disk_size_mb: 7168,
+              version: "latest",
+              experimental: false,
+            },
+          ]
+        : {
+            computers: [
+              {
+                id: "cmp_1",
+                name: "curie",
+                status: "running",
+                vcpus: 1,
+                ram_mb: 512,
+                disk_size_mb: 7168,
+                image: "ubuntu-desktop-24.04",
+                template_id: "scratch",
+                created_at: "2026-04-16T00:00:00Z",
+              },
+            ],
+            count: 1,
+          },
+    }));
+
+    const computers = await Computer.list({ status: "running", templateId: "scratch" }, makeConfig(fetch));
+    const templates = await Computer.listTemplates(makeConfig(fetch));
+
+    assert.equal(computers[0]!.name, "curie");
+    assert.equal(templates[0]!.id, "scratch");
+    assert.equal(calls[0]!.url, "https://api.example.test/v1/computers?status=running&template_id=scratch");
+    assert.equal(calls[1]!.url, "https://api.example.test/v1/computers/templates");
   });
 
   it("get() resolves name to ID via /v1/computers/{name}", async () => {

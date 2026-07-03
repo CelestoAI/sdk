@@ -93,9 +93,9 @@ def _make_client(
     if client is not None:
         return client, False
 
-    from .client import Celesto
+    from .client import _CelestoClient
 
-    return Celesto(api_key=api_key, base_url=base_url), True
+    return _CelestoClient(api_key=api_key, base_url=base_url), True
 
 
 class Computer(MutableMapping[str, Any]):
@@ -162,6 +162,63 @@ class Computer(MutableMapping[str, Any]):
         )
         instance._data = instance._client.computers.get(computer_id)
         return instance
+
+    @classmethod
+    def list(
+        cls,
+        *,
+        status: str | None = None,
+        template_id: str | None = None,
+        project_id: str | None = None,
+        limit: int | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        client: Any | None = None,
+    ) -> list[dict[str, Any]]:
+        """List computers in the current account."""
+        sdk_client, owns_client = _make_client(
+            client=client,
+            api_key=api_key,
+            base_url=base_url,
+        )
+        try:
+            response = sdk_client.computers.list(
+                status=status,
+                template_id=template_id,
+                project_id=project_id,
+                limit=limit,
+            )
+        finally:
+            if owns_client:
+                sdk_client.close()
+        computers = response.get("computers", []) if isinstance(response, dict) else []
+        return list(computers)
+
+    @classmethod
+    def list_templates(
+        cls,
+        *,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        client: Any | None = None,
+    ) -> list[dict[str, Any]]:
+        """List available computer templates."""
+        sdk_client, owns_client = _make_client(
+            client=client,
+            api_key=api_key,
+            base_url=base_url,
+        )
+        try:
+            templates = sdk_client.computers.list_templates()
+        finally:
+            if owns_client:
+                sdk_client.close()
+        return list(templates)
+
+    @classmethod
+    def templates(cls, **kwargs: Any) -> list[dict[str, Any]]:
+        """Alias for list_templates()."""
+        return cls.list_templates(**kwargs)
 
     @property
     def data(self) -> dict[str, Any]:

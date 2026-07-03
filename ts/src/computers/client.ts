@@ -9,6 +9,7 @@ import {
   ComputerStatus,
   CreateComputerParams,
   ExecParams,
+  ListComputersParams,
   SandboxTemplateInfo,
   TerminalConnectionInfo,
 } from "./types";
@@ -225,11 +226,10 @@ const pickOverrides = (options?: RequestOverrides): RequestOverrides => ({
  *
  * @example
  * ```ts
- * const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
- * const computer = await celesto.computers.create();
- * const result = await celesto.computers.exec(computer.id, "uname -a");
+ * const computer = await Computer.create();
+ * const result = await computer.run("uname -a");
  * console.log(result.stdout);
- * await celesto.computers.delete(computer.id);
+ * await computer.delete();
  * ```
  */
 export class ComputersClient {
@@ -260,11 +260,17 @@ export class ComputersClient {
     return data.map(toSandboxTemplateInfo);
   }
 
-  async list(options?: RequestOverrides): Promise<ComputerListResponse> {
+  async list(params: ListComputersParams = {}, options?: RequestOverrides): Promise<ComputerListResponse> {
     const ctx = buildRequestContext(this.config);
     const data = await request<ComputerListResponseWire>(ctx, {
       method: "GET",
       path: computersPath(""),
+      query: {
+        status: params.status,
+        template_id: params.templateId,
+        project_id: params.projectId,
+        limit: params.limit,
+      },
       ...pickOverrides(options),
     });
     return {
@@ -386,7 +392,7 @@ export class ComputersClient {
    *
    * @example
    * ```ts
-   * const conn = await celesto.computers.getTerminalConnection("my-computer");
+   * const conn = await client.getTerminalConnection("my-computer");
    * const ws = new WebSocket(conn.url, { headers: conn.headers });
    * ws.on("open", () => ws.send(conn.firstMessage));
    * ws.on("message", (data) => process.stdout.write(data));

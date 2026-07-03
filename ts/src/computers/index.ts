@@ -1,5 +1,4 @@
 export { Computer } from "./computer";
-export { ComputersClient } from "./client";
 export type {
   ComputerConnectionInfo,
   ComputerExecResponse,
@@ -10,6 +9,7 @@ export type {
   PublishedPortStatus,
   CreateComputerParams,
   ExecParams,
+  ListComputersParams,
   SandboxTemplateInfo,
   TerminalConnectionInfo,
 } from "./types";

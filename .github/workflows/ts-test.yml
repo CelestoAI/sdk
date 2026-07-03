@@ -1,4 +1,4 @@
-name: JS Tests
+name: TS Tests
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: js
+        working-directory: ts
 
     steps:
       - name: Check out repository
@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: js/package-lock.json
+          cache-dependency-path: ts/package-lock.json
 
       - name: Install dependencies
         run: npm ci
