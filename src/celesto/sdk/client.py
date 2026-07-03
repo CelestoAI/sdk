@@ -10,6 +10,7 @@ from typing import Any, List, Literal, Optional
 import httpx
 import pathspec
 
+from .computer import resolve_disk_size_mb
 from .exceptions import (
     CelestoAuthenticationError,
     CelestoNetworkError,
@@ -868,6 +869,7 @@ class Computers(_BaseClient):
         *,
         cpus: int | None = None,
         memory: int | None = None,
+        disk: int | float | str | None = None,
         vcpus: int | None = None,
         ram_mb: int | None = None,
         disk_size_mb: int | None = None,
@@ -883,6 +885,7 @@ class Computers(_BaseClient):
         Args:
             cpus: Number of virtual CPUs (1-16). Alias for vcpus.
             memory: Memory in MB (512-32768). Alias for ram_mb.
+            disk: Disk size as MB or a string like "2gb". Alias for disk_size_mb.
             vcpus: Number of virtual CPUs (1-16).
             ram_mb: Memory in MB (512-32768).
             disk_size_mb: Disk size in MB (512-51200).
@@ -905,14 +908,15 @@ class Computers(_BaseClient):
 
         resolved_vcpus = vcpus if vcpus is not None else cpus
         resolved_ram_mb = ram_mb if ram_mb is not None else memory
+        resolved_disk_size_mb = resolve_disk_size_mb(disk, disk_size_mb)
 
         payload: dict[str, Any] = {}
         if resolved_vcpus is not None:
             payload["vcpus"] = resolved_vcpus
         if resolved_ram_mb is not None:
             payload["ram_mb"] = resolved_ram_mb
-        if disk_size_mb is not None:
-            payload["disk_size_mb"] = disk_size_mb
+        if resolved_disk_size_mb is not None:
+            payload["disk_size_mb"] = resolved_disk_size_mb
         if image is not None:
             payload["image"] = image
         if template_id is not None:

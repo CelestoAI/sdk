@@ -39,18 +39,16 @@ export CELESTO_API_KEY="your-api-key"
 Create a file named `quickstart.mjs`:
 
 ```js
-import { Celesto } from "@celestoai/sdk";
+import { Computer } from "@celestoai/sdk";
 
-const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
-
-const computer = await celesto.computers.create();
+const computer = await Computer.create();
 try {
   console.log(`Computer ready: ${computer.name}`);
 
-  const result = await celesto.computers.exec(computer.id, "uname -a");
+  const result = await computer.run("uname -a");
   console.log(result.stdout);
 } finally {
-  await celesto.computers.delete(computer.id);
+  await computer.delete();
 }
 ```
 
@@ -70,24 +68,23 @@ Celesto creates a `scratch` computer, which is a minimal Ubuntu computer.
 Create a file named `create-computer.mjs`:
 
 ```js
-import { Celesto } from "@celestoai/sdk";
+import { Computer } from "@celestoai/sdk";
 
-const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
-
-const computer = await celesto.computers.create({
+const computer = await Computer.create({
   cpus: 2,
   memory: 2048,
-  diskSizeMb: 15360,
+  disk: "15gb",
 });
 
 try {
-  console.log(computer.name);
+  console.log(computer.name, computer["name"]);
 } finally {
-  await celesto.computers.delete(computer.id);
+  await computer.delete();
 }
 ```
 
-Omit CPU, memory, or disk fields to use the default size.
+Omit CPU, memory, or disk fields to use the default size. `disk` accepts MB as
+an integer or strings such as `"2gb"`.
 
 ### Templates
 
@@ -112,15 +109,13 @@ for (const template of templates) {
 Create a computer from a template:
 
 ```js
-import { Celesto } from "@celestoai/sdk";
+import { Computer } from "@celestoai/sdk";
 
-const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
-
-const computer = await celesto.computers.create({ templateId: "coding-agent" });
+const computer = await Computer.create({ templateId: "coding-agent" });
 try {
   console.log(computer.name);
 } finally {
-  await celesto.computers.delete(computer.id);
+  await computer.delete();
 }
 ```
 
@@ -129,13 +124,11 @@ try {
 Create a file named `run-command.mjs`:
 
 ```js
-import { Celesto } from "@celestoai/sdk";
+import { Computer } from "@celestoai/sdk";
 
-const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
-
-const computer = await celesto.computers.create();
+const computer = await Computer.create();
 try {
-  const result = await celesto.computers.exec(computer.id, "ls -la", {
+  const result = await computer.run("ls -la", {
     timeout: 60,
   });
 
@@ -143,23 +136,44 @@ try {
   console.log(result.stdout);
   console.error(result.stderr);
 } finally {
-  await celesto.computers.delete(computer.id);
+  await computer.delete();
 }
 ```
 
 ### Manage Computers
 
-`computerId` can be the ID returned by `celesto.computers.create()` or a
-computer name shown by the Celesto command-line tool:
-`celesto computer list`.
+`computerId` can be `computer.id` from `Computer.create()` or a computer name
+shown by the Celesto command-line tool: `celesto computer list`.
 
 | Method | What it does |
 | --- | --- |
 | `celesto.computers.list()` | List computers in your account |
-| `celesto.computers.get(computerId)` | Get one computer by name or ID |
-| `celesto.computers.stop(computerId)` | Stop a running computer |
-| `celesto.computers.start(computerId)` | Start a stopped computer |
-| `celesto.computers.delete(computerId)` | Delete a computer |
+| `Computer.get(computerId)` | Get one computer by name or ID |
+| `computer.stop()` | Stop a running computer |
+| `computer.start()` | Start a stopped computer |
+| `computer.delete()` | Delete a computer |
+
+### Publish Ports
+
+Publish a port when a service inside the computer needs a public URL:
+
+```js
+import { Computer } from "@celestoai/sdk";
+
+const computer = await Computer.get("curie");
+const url = await computer.publishPort(8000);
+console.log(url);
+```
+
+List and remove published ports:
+
+```js
+import { Computer } from "@celestoai/sdk";
+
+const computer = await Computer.get("curie");
+console.log(await computer.listPublishedPorts());
+await computer.unpublishPort(8000);
+```
 
 ### Terminal Connections
 
@@ -210,6 +224,9 @@ Full Gatekeeper docs: https://docs.celesto.ai/celesto-sdk/gatekeeper
 | `organizationId` | Sends the `X-Current-Organization` header |
 | `timeoutMs` | Request timeout in milliseconds |
 | `headers` | Extra headers to send with every request |
+
+Pass these options as the second argument to `Computer.create()` or
+`Computer.get()`, or to `new Celesto(...)` when using service clients.
 
 JWT is a signed login token. Most users should use a Celesto API key.
 

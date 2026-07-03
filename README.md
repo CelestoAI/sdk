@@ -60,7 +60,7 @@ Linux machines without a credential store, it saves the key in
 `$XDG_CONFIG_HOME/celesto/credentials.json` when `XDG_CONFIG_HOME` is set, or
 `~/.config/celesto/credentials.json` otherwise, with user-only file
 permissions. SDK code does not read that saved CLI key; it reads
-`CELESTO_API_KEY` or the `api_key` value you pass to `Celesto`.
+`CELESTO_API_KEY` or the `api_key` value you pass to `Computer` or `Celesto`.
 
 ## Create a Computer from Python
 
@@ -69,27 +69,29 @@ output, and deletes the computer. Celesto uses the `scratch` template by
 default.
 
 ```python
-from celesto import Celesto
- 
-client = Celesto()
-computer = client.computers.create()
- 
-print(f"Computer ready: {computer['name']}")
- 
-result = client.computers.exec(computer["id"], "uname -a")
-print(result["stdout"])
- 
-client.computers.delete(computer["id"])
+from celesto import Computer
+
+computer = Computer()
+try:
+    print(f"Computer ready: {computer.name}")
+
+    result = computer.run("uname -a")
+    print(result["stdout"])
+finally:
+    computer.delete()
 ```
 
 To pass the key directly instead of using `CELESTO_API_KEY`:
 
 ```python
-from celesto import Celesto
+from celesto import Computer
 
-with Celesto(api_key="your-api-key") as client:
-    result = client.computers.list()
-    print(result["count"])
+computer = Computer(api_key="your-api-key")
+try:
+    result = computer.run("uname -a")
+    print(result["stdout"])
+finally:
+    computer.delete()
 ```
 
 ## Manage Computers from the CLI
@@ -235,18 +237,16 @@ Use `celesto computer list` to see the computers in your account.
 In an ESM or TypeScript file:
 
 ```ts
-import { Celesto } from "@celestoai/sdk";
+import { Computer } from "@celestoai/sdk";
 
-const celesto = new Celesto({ token: process.env.CELESTO_API_KEY });
-
-const computer = await celesto.computers.create();
+const computer = await Computer.create();
 try {
   console.log(`Computer ready: ${computer.name}`);
 
-  const result = await celesto.computers.exec(computer.id, "uname -a");
+  const result = await computer.run("uname -a");
   console.log(result.stdout);
 } finally {
-  await celesto.computers.delete(computer.id);
+  await computer.delete();
 }
 ```
 
@@ -260,21 +260,17 @@ Use the Python SDK when you want Celesto inside an app, script, or agent.
 ### Create
 
 ```python
-from celesto import Celesto
+from celesto import Computer
 
-with Celesto() as client:
-    computer = client.computers.create(
-        cpus=2,
-        memory=2048,
-        disk_size_mb=15360,
-    )
-    try:
-        print(computer["name"])
-    finally:
-        client.computers.delete(computer["id"])
+computer = Computer(cpus=2, memory=2048, disk="15gb")
+try:
+    print(computer.name, computer["name"])
+finally:
+    computer.delete()
 ```
 
-Omit CPU, memory, or disk fields to use the default size.
+Omit CPU, memory, or disk fields to use the default size. `disk` accepts MB as
+an integer or strings such as `"2gb"`.
 
 ### Templates
 
@@ -301,43 +297,41 @@ when your code can run against multiple API versions.
 Create a computer from a template:
 
 ```python
-from celesto import Celesto
+from celesto import Computer
 
-with Celesto() as client:
-    computer = client.computers.create(template_id="coding-agent")
-    try:
-        print(computer["name"])
-    finally:
-        client.computers.delete(computer["id"])
+computer = Computer(template_id="coding-agent")
+try:
+    print(computer.name)
+finally:
+    computer.delete()
 ```
 
 ### Run a Command
 
 ```python
-from celesto import Celesto
+from celesto import Computer
 
-with Celesto() as client:
-    computer = client.computers.create()
-    try:
-        result = client.computers.exec(computer["id"], "ls -la", timeout=60)
-        print(result["exit_code"])
-        print(result["stdout"])
-        print(result["stderr"])
-    finally:
-        client.computers.delete(computer["id"])
+computer = Computer()
+try:
+    result = computer.run("ls -la", timeout=60)
+    print(result["exit_code"])
+    print(result["stdout"])
+    print(result["stderr"])
+finally:
+    computer.delete()
 ```
 
 The `timeout` value is the remote command timeout in seconds. The SDK gives the
 HTTP request a little more time than the command itself so slow command output
 can still return cleanly.
 
-Current caveat: `exec()` runs as the computer image's default exec user. The SDK
-does not yet expose a user selector.
+Current caveat: `run()` and `exec()` run as the computer image's default exec
+user. The SDK does not yet expose a user selector.
 
 ### List, Stop, Start, and Delete
 
-`computer_id` can be the ID returned by `client.computers.create()`, such as
-`computer["id"]`, or a computer name shown by `celesto computer list`.
+`computer_id` can be `computer.id` from `Computer()` or a computer name shown by
+`celesto computer list`.
 
 Filter a list when you only want matching computers:
 
@@ -354,31 +348,31 @@ with Celesto() as client:
 | --- | --- |
 | `client.computers.list()` | List computers in your account |
 | `client.computers.list(status="running", template_id="browser-agent", project_id="proj_123", limit=10)` | List matching computers |
-| `client.computers.get(computer_id)` | Get one computer by name or ID |
-| `client.computers.stop(computer_id)` | Stop a running computer |
-| `client.computers.start(computer_id)` | Start a stopped computer |
-| `client.computers.delete(computer_id)` | Delete a computer |
+| `Computer.get(computer_id)` | Get one computer by name or ID |
+| `computer.stop()` | Stop a running computer |
+| `computer.start()` | Start a stopped computer |
+| `computer.delete()` | Delete a computer |
 
 ### Publish Ports
 
 Publish a port when a service inside the computer needs a public URL:
 
 ```python
-from celesto import Celesto
+from celesto import Computer
 
-with Celesto() as client:
-    published = client.computers.publish_port("curie", port=8000)
-    print(published["url"])
+computer = Computer.get("curie")
+url = computer.publish_port(8000)
+print(url)
 ```
 
 List and remove published ports:
 
 ```python
-from celesto import Celesto
+from celesto import Computer
 
-with Celesto() as client:
-    print(client.computers.list_published_ports("curie"))
-    client.computers.unpublish_port("curie", port=8000)
+computer = Computer.get("curie")
+print(computer.list_published_ports())
+computer.unpublish_port(8000)
 ```
 
 ## CLI Commands

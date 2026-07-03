@@ -5,6 +5,7 @@ import {
   ComputerExecResponse,
   ComputerInfo,
   ComputerListResponse,
+  ComputerPublishedPortInfo,
   ComputerStatus,
   CreateComputerParams,
   ExecParams,
@@ -15,6 +16,15 @@ import {
 interface ComputerConnectionInfoWire {
   ssh?: string | null;
   access_url?: string | null;
+}
+
+interface ComputerPublishedPortInfoWire {
+  id?: string | null;
+  computer_id: string;
+  port: number;
+  url?: string | null;
+  status: ComputerPublishedPortInfo["status"];
+  created_at?: string | null;
 }
 
 interface ComputerInfoWire {
@@ -28,6 +38,7 @@ interface ComputerInfoWire {
   template_id: string;
   template_version?: string | null;
   connection?: ComputerConnectionInfoWire | null;
+  published_ports?: ComputerPublishedPortInfoWire[];
   last_error?: string | null;
   created_at: string;
   stopped_at?: string | null;
@@ -71,6 +82,15 @@ const toConnection = (
   return out;
 };
 
+const toPublishedPortInfo = (payload: ComputerPublishedPortInfoWire): ComputerPublishedPortInfo => ({
+  id: payload.id ?? null,
+  computerId: payload.computer_id,
+  port: payload.port,
+  url: payload.url ?? null,
+  status: payload.status,
+  createdAt: payload.created_at ?? null,
+});
+
 const toComputerInfo = (payload: ComputerInfoWire): ComputerInfo => ({
   id: payload.id,
   name: payload.name,
@@ -82,6 +102,7 @@ const toComputerInfo = (payload: ComputerInfoWire): ComputerInfo => ({
   templateId: payload.template_id,
   templateVersion: payload.template_version ?? null,
   connection: toConnection(payload.connection),
+  publishedPorts: payload.published_ports?.map(toPublishedPortInfo),
   lastError: payload.last_error ?? null,
   createdAt: payload.created_at,
   stoppedAt: payload.stopped_at ?? null,
@@ -104,6 +125,48 @@ const toSandboxTemplateInfo = (payload: SandboxTemplateInfoWire): SandboxTemplat
   experimental: payload.experimental,
 });
 
+const diskUnitsToMb: Record<string, number> = {
+  "": 1,
+  m: 1,
+  mb: 1,
+  mib: 1,
+  g: 1024,
+  gb: 1024,
+  gib: 1024,
+  t: 1024 * 1024,
+  tb: 1024 * 1024,
+  tib: 1024 * 1024,
+};
+
+const parseDiskSizeMb = (disk: number | string | undefined): number | undefined => {
+  if (disk === undefined) {
+    return undefined;
+  }
+
+  if (typeof disk === "number") {
+    if (!Number.isInteger(disk) || disk <= 0) {
+      throw new Error("disk as a number must be a whole number of MB.");
+    }
+    return disk;
+  }
+
+  const match = /^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z]*)\s*$/.exec(disk);
+  if (!match) {
+    throw new Error("disk must be a size in MB or a string like '2gb'.");
+  }
+
+  const multiplier = diskUnitsToMb[match[2]!.toLowerCase()];
+  if (multiplier === undefined) {
+    throw new Error("disk must use MB, GB, or TB, for example '2048mb' or '2gb'.");
+  }
+
+  const sizeMb = Number(match[1]) * multiplier;
+  if (!Number.isInteger(sizeMb) || sizeMb <= 0) {
+    throw new Error("disk must resolve to a whole number of MB, for example '1536mb' or '1.5gb'.");
+  }
+  return sizeMb;
+};
+
 const buildCreateComputerBody = (params: CreateComputerParams): Record<string, unknown> => {
   if (params.cpus !== undefined && params.vcpus !== undefined && params.cpus !== params.vcpus) {
     throw new Error("cpus and vcpus must have the same value when both are provided.");
@@ -112,17 +175,27 @@ const buildCreateComputerBody = (params: CreateComputerParams): Record<string, u
     throw new Error("memory and ramMb must have the same value when both are provided.");
   }
 
+  const parsedDiskSizeMb = parseDiskSizeMb(params.disk);
+  if (
+    parsedDiskSizeMb !== undefined &&
+    params.diskSizeMb !== undefined &&
+    parsedDiskSizeMb !== params.diskSizeMb
+  ) {
+    throw new Error("disk and diskSizeMb must have the same value when both are provided.");
+  }
+
   const body: Record<string, unknown> = {};
   const vcpus = params.vcpus ?? params.cpus;
   const ramMb = params.ramMb ?? params.memory;
+  const diskSizeMb = params.diskSizeMb ?? parsedDiskSizeMb;
   if (vcpus !== undefined) {
     body.vcpus = vcpus;
   }
   if (ramMb !== undefined) {
     body.ram_mb = ramMb;
   }
-  if (params.diskSizeMb !== undefined) {
-    body.disk_size_mb = params.diskSizeMb;
+  if (diskSizeMb !== undefined) {
+    body.disk_size_mb = diskSizeMb;
   }
   if (params.image !== undefined) {
     body.image = params.image;
@@ -257,6 +330,48 @@ export class ComputersClient {
       ...pickOverrides(options),
     });
     return toComputerInfo(data);
+  }
+
+  async publishPort(
+    computerId: string,
+    port = 8000,
+    options?: RequestOverrides,
+  ): Promise<ComputerPublishedPortInfo> {
+    const ctx = buildRequestContext(this.config);
+    const data = await request<ComputerPublishedPortInfoWire>(ctx, {
+      method: "POST",
+      path: computersPath(`/${encodeURIComponent(computerId)}/published-ports`),
+      body: { port },
+      ...pickOverrides(options),
+    });
+    return toPublishedPortInfo(data);
+  }
+
+  async listPublishedPorts(
+    computerId: string,
+    options?: RequestOverrides,
+  ): Promise<ComputerPublishedPortInfo[]> {
+    const ctx = buildRequestContext(this.config);
+    const data = await request<ComputerPublishedPortInfoWire[]>(ctx, {
+      method: "GET",
+      path: computersPath(`/${encodeURIComponent(computerId)}/published-ports`),
+      ...pickOverrides(options),
+    });
+    return data.map(toPublishedPortInfo);
+  }
+
+  async unpublishPort(
+    computerId: string,
+    port = 8000,
+    options?: RequestOverrides,
+  ): Promise<ComputerPublishedPortInfo> {
+    const ctx = buildRequestContext(this.config);
+    const data = await request<ComputerPublishedPortInfoWire>(ctx, {
+      method: "DELETE",
+      path: computersPath(`/${encodeURIComponent(computerId)}/published-ports/${port}`),
+      ...pickOverrides(options),
+    });
+    return toPublishedPortInfo(data);
   }
 
   /**

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { Computer } from "../src/computers/computer";
 import { ComputersClient } from "../src/computers/client";
 import type { ClientConfig } from "../src/core/config";
 import { CelestoApiError, CelestoError, CelestoNetworkError } from "../src/core/errors";
@@ -117,6 +118,28 @@ describe("ComputersClient", () => {
     assert.deepEqual(calls[0]!.body, {});
   });
 
+  it("create() accepts friendly disk sizes", async () => {
+    const { fetch, calls } = makeFetchMock(() => ({
+      status: 201,
+      body: {
+        id: "cmp_disk",
+        name: "disk",
+        status: "creating",
+        vcpus: 1,
+        ram_mb: 1024,
+        disk_size_mb: 1536,
+        image: "ubuntu-desktop-24.04",
+        template_id: "scratch",
+        created_at: "2026-04-16T00:00:00Z",
+      },
+    }));
+    const client = new ComputersClient(makeConfig(fetch));
+
+    await client.create({ disk: "1.5gb" });
+
+    assert.deepEqual(calls[0]!.body, { disk_size_mb: 1536 });
+  });
+
   it("create() rejects conflicting aliases", async () => {
     const client = new ComputersClient(makeConfig(async () => new Response()));
 
@@ -127,6 +150,10 @@ describe("ComputersClient", () => {
     await assert.rejects(
       () => client.create({ memory: 1024, ramMb: 2048 }),
       /memory and ramMb must have the same value/i,
+    );
+    await assert.rejects(
+      () => client.create({ disk: "2gb", diskSizeMb: 1024 }),
+      /disk and diskSizeMb must have the same value/i,
     );
   });
 
@@ -271,6 +298,116 @@ describe("ComputersClient", () => {
       "POST https://api.example.test/v1/computers/cmp_1/start",
       "DELETE https://api.example.test/v1/computers/cmp_1",
     ]);
+  });
+
+  it("published port methods hit the right endpoints and map response fields", async () => {
+    const { fetch, calls } = makeFetchMock((call) => ({
+      status: 200,
+      body: call.method === "GET"
+        ? [
+            {
+              id: "cpp_1",
+              computer_id: "cmp_1",
+              port: 8080,
+              url: "https://p-test.celesto.ai",
+              status: "published",
+              created_at: "2026-04-16T00:00:00Z",
+            },
+          ]
+        : {
+            id: "cpp_1",
+            computer_id: "cmp_1",
+            port: 8080,
+            url: call.method === "DELETE" ? null : "https://p-test.celesto.ai",
+            status: call.method === "DELETE" ? "unpublished" : "published",
+            created_at: "2026-04-16T00:00:00Z",
+          },
+    }));
+    const client = new ComputersClient(makeConfig(fetch));
+
+    const published = await client.publishPort("cmp_1", 8080);
+    const ports = await client.listPublishedPorts("cmp_1");
+    const unpublished = await client.unpublishPort("cmp_1", 8080);
+
+    assert.equal(published.url, "https://p-test.celesto.ai");
+    assert.equal(ports[0]!.computerId, "cmp_1");
+    assert.equal(unpublished.status, "unpublished");
+    assert.deepEqual(calls.map((call) => `${call.method} ${call.url}`), [
+      "POST https://api.example.test/v1/computers/cmp_1/published-ports",
+      "GET https://api.example.test/v1/computers/cmp_1/published-ports",
+      "DELETE https://api.example.test/v1/computers/cmp_1/published-ports/8080",
+    ]);
+  });
+
+  it("Computer convenience object supports properties, run, stop, and publishPort", async () => {
+    const { fetch, calls } = makeFetchMock((call) => {
+      if (call.url.endsWith("/exec")) {
+        return { status: 200, body: { exit_code: 0, stdout: "hello\n", stderr: "" } };
+      }
+      if (call.url.endsWith("/stop")) {
+        return {
+          status: 200,
+          body: {
+            id: "cmp_1",
+            name: "curie",
+            status: "stopped",
+            vcpus: 1,
+            ram_mb: 512,
+            disk_size_mb: 2048,
+            image: "ubuntu-desktop-24.04",
+            template_id: "scratch",
+            created_at: "2026-04-16T00:00:00Z",
+          },
+        };
+      }
+      if (call.url.endsWith("/published-ports")) {
+        return {
+          status: 200,
+          body: {
+            id: "cpp_1",
+            computer_id: "cmp_1",
+            port: 8080,
+            url: "https://p-test.celesto.ai",
+            status: "published",
+            created_at: "2026-04-16T00:00:00Z",
+          },
+        };
+      }
+      return {
+        status: 201,
+        body: {
+          id: "cmp_1",
+          name: "curie",
+          status: "running",
+          vcpus: 1,
+          ram_mb: 512,
+          disk_size_mb: 2048,
+          image: "ubuntu-desktop-24.04",
+          template_id: "scratch",
+          created_at: "2026-04-16T00:00:00Z",
+        },
+      };
+    });
+
+    const computer = await Computer.create(
+      { cpus: 1, memory: 512, disk: "2gb" },
+      makeConfig(fetch),
+    );
+    const result = await computer.run("echo hello", { timeout: 60 });
+    await computer.stop();
+    const url = await computer.publishPort(8080);
+
+    assert.equal(computer.name, "curie");
+    assert.equal(computer["name"], "curie");
+    assert.equal(computer.get("name"), "curie");
+    assert.equal(result.stdout, "hello\n");
+    assert.equal(computer.status, "stopped");
+    assert.equal(url, "https://p-test.celesto.ai");
+    assert.deepEqual(calls[0]!.body, {
+      vcpus: 1,
+      ram_mb: 512,
+      disk_size_mb: 2048,
+    });
   });
 
   it("throws CelestoApiError on non-2xx responses", async () => {

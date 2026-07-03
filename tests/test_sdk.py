@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from celesto.sdk import Celesto
+from celesto.sdk import Celesto, Computer
 from celesto.sdk.exceptions import CelestoValidationError
 
 
@@ -29,6 +29,106 @@ def test_sdk_exposes_service_clients():
     assert hasattr(client, "deployment")
     assert hasattr(client, "gatekeeper")
     assert hasattr(client, "computers")
+
+
+def test_computer_convenience_api_creates_and_supports_mapping_access():
+    session = DummySession(
+        status_code=201,
+        payload={
+            "id": "cmp_1",
+            "name": "curie",
+            "status": "creating",
+            "vcpus": 1,
+            "ram_mb": 512,
+            "disk_size_mb": 2048,
+            "image": "ubuntu-desktop-24.04",
+            "template_id": "scratch",
+            "created_at": "2026-06-07T00:00:00Z",
+        },
+    )
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    computer = Computer(cpus=1, memory=512, disk="2gb", client=client)
+
+    assert computer.name == "curie"
+    assert computer["name"] == "curie"
+    assert dict(computer)["id"] == "cmp_1"
+    assert session.calls[0]["json"] == {
+        "vcpus": 1,
+        "ram_mb": 512,
+        "disk_size_mb": 2048,
+    }
+
+
+def test_computer_convenience_api_runs_lifecycle_and_publishes_port():
+    session = DummySession(
+        status_code=201,
+        payload={
+            "id": "cmp_1",
+            "name": "curie",
+            "status": "running",
+            "vcpus": 1,
+            "ram_mb": 512,
+            "disk_size_mb": 2048,
+            "image": "ubuntu-desktop-24.04",
+            "template_id": "scratch",
+            "created_at": "2026-06-07T00:00:00Z",
+        },
+    )
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+    computer = Computer(client=client)
+
+    session.payload = {"exit_code": 0, "stdout": "hello\n", "stderr": ""}
+    result = computer.run("echo hello", timeout=60)
+
+    assert result["stdout"] == "hello\n"
+    assert session.calls[1]["url"] == "https://api.example.test/v1/computers/cmp_1/exec"
+    assert session.calls[1]["json"] == {"command": "echo hello", "timeout": 60}
+
+    session.payload = {
+        "id": "cmp_1",
+        "name": "curie",
+        "status": "stopped",
+        "vcpus": 1,
+        "ram_mb": 512,
+        "disk_size_mb": 2048,
+        "image": "ubuntu-desktop-24.04",
+        "template_id": "scratch",
+        "created_at": "2026-06-07T00:00:00Z",
+    }
+    assert computer.stop().status == "stopped"
+
+    session.payload = {
+        "id": "cpp_123",
+        "computer_id": "cmp_1",
+        "port": 8080,
+        "url": "https://p-test.celesto.ai",
+        "status": "published",
+        "created_at": "2026-06-07T00:00:00Z",
+    }
+    assert computer.publish_port(8080) == "https://p-test.celesto.ai"
+    assert session.calls[-1]["url"] == (
+        "https://api.example.test/v1/computers/cmp_1/published-ports"
+    )
+
+
+def test_computers_create_accepts_friendly_disk_alias():
+    session = DummySession(status_code=201, payload={})
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    client.computers.create(disk="1.5gb")
+
+    assert session.calls[0]["json"] == {"disk_size_mb": 1536}
+
+
+def test_computers_create_rejects_conflicting_disk_aliases():
+    client = Celesto("test-key", base_url="https://api.example.test/v1")
+
+    with pytest.raises(CelestoValidationError):
+        client.computers.create(disk="2gb", disk_size_mb=1024)
 
 
 def test_computers_create_sends_only_explicit_overrides():

@@ -1,8 +1,8 @@
 """Celesto SDK package."""
 
 from .main import app
-from .sdk import Celesto
+from .sdk import Celesto, Computer
 
 __version__ = "0.0.9"
 
-__all__ = ["app", "Celesto", "__version__"]
+__all__ = ["app", "Celesto", "Computer", "__version__"]

@@ -1,4 +1,5 @@
 from .client import Celesto
+from .computer import Computer
 from .exceptions import (
     CelestoAuthenticationError,
     CelestoError,
@@ -31,6 +32,7 @@ from .types import (
 __all__ = [
     # Main client
     "Celesto",
+    "Computer",
     # Exceptions
     "CelestoError",
     "CelestoAuthenticationError",

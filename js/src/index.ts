@@ -18,13 +18,15 @@ export type {
   GatekeeperRevokeParams,
   GatekeeperRevokeResponse,
 } from "./gatekeeper";
-export { ComputersClient } from "./computers";
+export { Computer, ComputersClient } from "./computers";
 export type {
   ComputerConnectionInfo,
   ComputerExecResponse,
   ComputerInfo,
   ComputerListResponse,
+  ComputerPublishedPortInfo,
   ComputerStatus,
+  PublishedPortStatus,
   CreateComputerParams,
   ExecParams,
   SandboxTemplateInfo,
