@@ -6,6 +6,7 @@ import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, List, Literal, Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 import pathspec
@@ -19,12 +20,25 @@ from .exceptions import (
     CelestoServerError,
     CelestoValidationError,
 )
+from .types import ComputerTerminalSessionInfo
 
 _BASE_URL = os.environ.get("CELESTO_BASE_URL", "https://api.celesto.ai/v1")
 # Deployed proxies can terminate long idle buffered exec responses before the
 # backend command timeout. Aggregate the existing streaming endpoint for longer
 # commands while preserving the public exec() return shape.
 _STREAM_EXEC_FOR_TIMEOUT_OVER_SECONDS = 110
+
+
+def _terminal_gateway_url(gateway_url: str, token: str) -> str:
+    """Add the short-lived terminal token to a gateway WebSocket URL."""
+    parts = urlsplit(gateway_url)
+    query = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if key != "token"
+    ]
+    query.append(("token", token))
+    return urlunsplit(parts._replace(query=urlencode(query)))
 
 
 class _BaseConnection:
@@ -976,6 +990,38 @@ class Computers(_BaseClient):
             Computer info dict.
         """
         return self._request("GET", f"/computers/{computer_id}")
+
+    def create_terminal_session(self, computer_id: str) -> ComputerTerminalSessionInfo:
+        """Create a short-lived direct terminal gateway connection.
+
+        Args:
+            computer_id: Computer ID or name.
+
+        Returns:
+            Terminal session details. ``url`` is ready for a WebSocket client
+            and contains a short-lived secret token.
+        """
+        session = self._request("POST", f"/computers/{computer_id}/terminals")
+        terminal_id = session.get("terminal_id") if isinstance(session, dict) else None
+        gateway_url = session.get("gateway_url") if isinstance(session, dict) else None
+        token = session.get("token") if isinstance(session, dict) else None
+        expires_at = session.get("expires_at") if isinstance(session, dict) else None
+        if (
+            not isinstance(terminal_id, str)
+            or not isinstance(gateway_url, str)
+            or not isinstance(token, str)
+            or not isinstance(expires_at, str)
+        ):
+            raise CelestoServerError(
+                "Celesto did not return terminal connection details. Call create_terminal_session() again."
+            )
+        return {
+            "terminal_id": terminal_id,
+            "gateway_url": gateway_url,
+            "token": token,
+            "expires_at": expires_at,
+            "url": _terminal_gateway_url(gateway_url, token),
+        }
 
     def publish_port(self, computer_id: str, port: int = 8000) -> dict[str, Any]:
         """Publish a computer port to the internet.

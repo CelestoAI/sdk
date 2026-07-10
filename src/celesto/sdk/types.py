@@ -123,6 +123,16 @@ class ComputerConnectionInfo(TypedDict):
     access_url: NotRequired[str]
 
 
+class ComputerTerminalSessionInfo(TypedDict):
+    """Short-lived connection details for the fast terminal gateway."""
+
+    terminal_id: str
+    gateway_url: str
+    token: str
+    expires_at: str
+    url: str
+
+
 PublishedPortStatus = Literal[
     "publishing",
     "published",
@@ -239,6 +249,7 @@ __all__ = [
     # Computer
     "ComputerStatus",
     "ComputerConnectionInfo",
+    "ComputerTerminalSessionInfo",
     "PublishedPortStatus",
     "ComputerPublishedPortInfo",
     "ComputerInfo",

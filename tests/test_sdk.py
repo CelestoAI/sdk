@@ -4,7 +4,7 @@ import pytest
 import celesto
 from celesto import Computer
 from celesto.sdk.client import _CelestoClient
-from celesto.sdk.exceptions import CelestoValidationError
+from celesto.sdk.exceptions import CelestoServerError, CelestoValidationError
 
 
 class DummySession:
@@ -354,6 +354,59 @@ def test_computers_exec_aggregates_stream_for_long_timeouts(monkeypatch):
     }
     assert stream_calls == [("cmp_123", "sleep 130", 300)]
     assert session.calls == []
+
+
+def test_computer_creates_fast_terminal_gateway_session():
+    session = DummySession(
+        status_code=201,
+        payload={
+            "id": "cmp_1",
+            "name": "curie",
+            "status": "running",
+            "vcpus": 1,
+            "ram_mb": 512,
+            "disk_size_mb": 2048,
+            "image": "ubuntu-desktop-24.04",
+            "template_id": "scratch",
+            "created_at": "2026-06-07T00:00:00Z",
+        },
+    )
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+    computer = Computer(client=client)
+    session.payload = {
+        "terminal_id": "term_123",
+        "gateway_url": "wss://gateway.example/v1/terminals/term_123/connect?region=us",
+        "token": "short lived token",
+        "expires_at": "2026-07-10T12:01:30Z",
+    }
+
+    result = computer.create_terminal_session()
+
+    assert result["terminal_id"] == "term_123"
+    assert result["url"] == (
+        "wss://gateway.example/v1/terminals/term_123/connect"
+        "?region=us&token=short+lived+token"
+    )
+    assert session.calls[1]["method"] == "POST"
+    assert session.calls[1]["url"] == (
+        "https://api.example.test/v1/computers/cmp_1/terminals"
+    )
+
+
+def test_terminal_session_rejects_incomplete_backend_response():
+    session = DummySession(
+        status_code=201,
+        payload={
+            "gateway_url": "wss://gateway.example/connect",
+            "token": "short-lived-token",
+        },
+    )
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    with pytest.raises(CelestoServerError, match="terminal connection details"):
+        client.computers.create_terminal_session("cmp_123")
 
 
 def test_computers_list_command_history_hits_backend_endpoint():

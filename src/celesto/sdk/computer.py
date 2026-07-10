@@ -5,6 +5,7 @@ from collections.abc import Iterator, MutableMapping
 from typing import Any
 
 from .exceptions import CelestoValidationError
+from .types import ComputerTerminalSessionInfo
 
 _DISK_RE = re.compile(r"^\s*(?P<amount>\d+(?:\.\d+)?)\s*(?P<unit>[a-zA-Z]*)\s*$")
 _DISK_UNITS_TO_MB = {
@@ -262,6 +263,10 @@ class Computer(MutableMapping[str, Any]):
             command,
             timeout=timeout,
         )
+
+    def create_terminal_session(self) -> ComputerTerminalSessionInfo:
+        """Create a short-lived direct terminal gateway connection."""
+        return self._client.computers.create_terminal_session(self._identifier())
 
     def stop(self) -> "Computer":
         """Stop this computer and update the local data."""
