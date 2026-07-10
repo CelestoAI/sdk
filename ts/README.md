@@ -138,6 +138,26 @@ try {
 }
 ```
 
+Stream output while the command is running:
+
+```js
+import { Computer } from "@celestoai/sdk";
+
+const computer = await Computer.get("curie");
+const controller = new AbortController();
+
+for await (const event of computer.runStream("npm test", {
+  timeout: 300,
+  signal: controller.signal,
+})) {
+  if (event.type === "stdout") process.stdout.write(event.data);
+  if (event.type === "stderr") process.stderr.write(event.data);
+  if (event.type === "exit") console.log(`Exit code: ${event.exitCode}`);
+}
+```
+
+Call `controller.abort()` to stop the stream and the remote command.
+
 ### Manage Computers
 
 `computerId` can be `computer.id` from `Computer.create()` or a computer name
@@ -147,6 +167,7 @@ shown by the Celesto command-line tool: `celesto computer list`.
 | --- | --- |
 | `Computer.list()` | List computers in your account |
 | `Computer.get(computerId)` | Get one computer by name or ID |
+| `computer.listCommandHistory()` | List recent commands and their status |
 | `computer.stop()` | Stop a running computer |
 | `computer.start()` | Start a stopped computer |
 | `computer.delete()` | Delete a computer |
@@ -175,13 +196,33 @@ await computer.unpublishPort(8000);
 
 ### Terminal Connections
 
-Use `getTerminalConnection()` when you are building your own interactive
-terminal. It returns the WebSocket URL, headers, and first message needed to
-connect. A WebSocket is a long-running connection for sending terminal input and
-receiving terminal output.
+Use `createTerminalSession()` when you are building an interactive terminal.
+Celesto returns a short-lived URL that connects directly to the fast terminal
+gateway instead of sending terminal traffic through the control plane. Creating
+a terminal session requires write access to the computer.
 
-The SDK does not install a WebSocket package for you. Use any WebSocket library
-that supports custom headers.
+For Node.js, first install a WebSocket client:
+
+```bash
+npm install ws
+```
+
+Then connect with the authenticated URL:
+
+```js
+import { Computer } from "@celestoai/sdk";
+import WebSocket from "ws";
+
+const computer = await Computer.get("curie");
+const connection = await computer.createTerminalSession();
+const ws = new WebSocket(connection.url);
+
+ws.on("message", (data) => process.stdout.write(data));
+ws.on("open", () => ws.send("pwd\n"));
+```
+
+`connection.url` contains a short-lived terminal token. Treat it as a secret and
+create a new terminal session after `connection.expiresAt`.
 
 ## Gatekeeper
 

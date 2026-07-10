@@ -68,6 +68,49 @@ export interface ComputerExecResponse {
   exitCode: number;
   stdout: string;
   stderr: string;
+  commandId?: string | null;
+  durationMs?: number | null;
+  timedOut?: boolean | null;
+}
+
+export type ComputerExecStreamEvent =
+  | {
+      type: "started";
+      commandId: string;
+      startedAtUnixMs: number;
+      timeoutSeconds: number;
+    }
+  | {
+      type: "stdout" | "stderr";
+      data: string;
+    }
+  | {
+      type: "exit";
+      exitCode: number;
+      commandId?: string;
+      startedAtUnixMs?: number;
+      endedAtUnixMs?: number;
+      durationMs?: number;
+      timedOut?: boolean;
+    };
+
+export interface ComputerCommandHistoryEntry {
+  commandId: string;
+  source: string;
+  status: string;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  durationMs?: number | null;
+  timeoutSeconds?: number | null;
+  exitCode?: number | null;
+  stdoutBytes?: number | null;
+  stderrBytes?: number | null;
+  errorType?: string | null;
+}
+
+export interface ComputerCommandHistoryResponse {
+  commands: ComputerCommandHistoryEntry[];
+  count: number;
 }
 
 export interface SandboxTemplateInfo {
@@ -105,23 +148,33 @@ export interface CreateComputerParams {
 export interface ExecParams {
   /** Timeout in seconds (1-300). Defaults to 30. */
   timeout?: number;
+  /** Abort the HTTP request. Streaming requests also stop the remote command. */
+  signal?: AbortSignal;
 }
 
-/**
- * Everything needed to open a WebSocket terminal connection.
- *
- * Use with any WebSocket library:
- * ```ts
- * const conn = await client.getTerminalConnection("my-computer");
- * const ws = new WebSocket(conn.url, { headers: conn.headers });
- * ws.on("open", () => ws.send(conn.firstMessage));
- * ```
- */
+export interface ListCommandHistoryParams {
+  /** Maximum command records to return (1-200). Defaults to 50. */
+  limit?: number;
+}
+
+/** Legacy WebSocket connection fields retained for source compatibility. */
 export interface TerminalConnectionInfo {
-  /** The wss:// URL to connect to. */
+  /** Authenticated wss:// URL ready to pass to a WebSocket constructor. */
   url: string;
-  /** Headers to send on the WebSocket handshake (includes Authorization). */
+  /** @deprecated The fast terminal gateway does not require custom headers. */
   headers: Record<string, string>;
-  /** JSON string to send as the first message after connect (legacy token auth). */
+  /** @deprecated The fast terminal gateway does not require a first message. */
   firstMessage: string;
+}
+
+/** A short-lived direct connection to Celesto's fast terminal gateway. */
+export interface TerminalSessionInfo extends TerminalConnectionInfo {
+  /** Durable terminal session ID. */
+  terminalId: string;
+  /** Gateway URL without credentials. */
+  gatewayUrl: string;
+  /** Short-lived terminal token. Treat this value as a secret. */
+  token: string;
+  /** ISO 8601 expiry time for the terminal token. */
+  expiresAt: string;
 }
