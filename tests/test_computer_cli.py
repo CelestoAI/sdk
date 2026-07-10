@@ -69,6 +69,16 @@ class _FakeComputers:
         self.calls.append(("exec_stream", computer_id, command, timeout))
         yield from self.stream_events
 
+    def create_terminal_session(self, computer_id: str) -> dict:
+        self.calls.append(("terminal", computer_id))
+        return {
+            "terminal_id": "term_123",
+            "gateway_url": "wss://gateway.example/v1/terminals/term_123/connect",
+            "token": "short-lived-token",
+            "expires_at": "2026-07-10T12:01:30Z",
+            "url": "wss://gateway.example/v1/terminals/term_123/connect?token=short-lived-token",
+        }
+
     def publish_port(self, computer_id: str, *, port: int = 8000) -> dict:
         self.calls.append(("publish", computer_id, port))
         return {
@@ -113,6 +123,45 @@ class _FakeClient:
 
     def __exit__(self, *exc: object) -> None:
         return None
+
+
+def test_terminal_gateway_error_frames_are_detected():
+    assert computer._is_terminal_gateway_error(
+        '{"type":"error","message":"host unavailable"}'
+    )
+    assert not computer._is_terminal_gateway_error("shell output")
+
+
+def test_closing_terminal_session_stops_remote_shell():
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.sent: list[str] = []
+            self.closed = False
+
+        def send(self, message: str) -> None:
+            self.sent.append(message)
+
+        def close(self) -> None:
+            self.closed = True
+
+    ws = FakeWebSocket()
+
+    computer._close_terminal_session(ws)
+
+    assert [json.loads(message) for message in ws.sent] == [{"type": "close"}]
+    assert ws.closed
+
+
+def test_terminal_session_uses_resolved_computer_and_fast_gateway():
+    fake_client = _FakeClient()
+
+    result = computer._create_terminal_session_with_resume(fake_client, "curie")
+
+    assert result["url"].startswith("wss://gateway.example/")
+    assert fake_client.computers.calls == [
+        ("get", "curie"),
+        ("terminal", "cmp_123"),
+    ]
 
 
 def test_computer_port_publish_prints_url(monkeypatch):

@@ -172,6 +172,39 @@ def _exec_stream_with_resume(
         yield from client.computers.exec_stream(computer_id, command, timeout=timeout)
 
 
+def _create_terminal_session_with_resume(
+    client: _CelestoClient,
+    computer_id: str,
+) -> dict[str, Any]:
+    """Resolve, resume, and create a fast terminal gateway session."""
+    info = client.computers.get(computer_id)
+    resolved_id = str(info.get("id") or computer_id)
+    if info.get("status") == "stopped":
+        _resume_computer(client, resolved_id)
+    return client.computers.create_terminal_session(resolved_id)
+
+
+def _is_terminal_gateway_error(message: str) -> bool:
+    """Return whether a terminal gateway text frame reports an error."""
+    try:
+        payload = json.loads(message)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return isinstance(payload, dict) and payload.get("type") == "error"
+
+
+def _close_terminal_session(ws: Any) -> None:
+    """Close the remote shell before disconnecting its WebSocket."""
+    try:
+        ws.send(json.dumps({"type": "close"}))
+    except Exception:
+        pass
+    try:
+        ws.close()
+    except Exception:
+        pass
+
+
 def _write_stream_event(event: dict[str, Any], *, as_json: bool = False) -> int | None:
     if as_json:
         _print_json_line(event)
@@ -523,58 +556,45 @@ def ssh_to_computer(
     api_key: ApiKeyOption = None,
 ):
     """Open an interactive terminal session on a computer. Automatically resumes stopped computers."""
+    import select
     import signal
     import termios
     import threading
-    import time
     import tty
 
     import websockets.sync.client
 
-    key = _get_api_key(api_key)
-
-    # Check if computer is stopped and auto-resume
     with _get_client(api_key) as client:
-        info = client.computers.get(computer_id)
-        resolved_id = info.get("id", computer_id)
-        if info.get("status") == "stopped":
-            console.print("[yellow]Computer is stopped. Resuming...[/yellow]")
-            client.computers.start(resolved_id)
-            for _ in range(30):
-                info = client.computers.get(resolved_id)
-                if info.get("status") == "running":
-                    break
-                time.sleep(1)
-            else:
-                console.print("[red]Computer failed to resume.[/red]")
-                raise typer.Exit(1)
-            console.print("[green]Computer resumed.[/green]")
+        terminal_session = _create_terminal_session_with_resume(client, computer_id)
 
-    base_url = os.environ.get("CELESTO_BASE_URL", "https://api.celesto.ai/v1")
-    ws_url = base_url.replace("https://", "wss://").replace("http://", "ws://")
-    ws_url = f"{ws_url}/computers/{resolved_id}/terminal"
+    ws_url = terminal_session.get("url")
+    if not isinstance(ws_url, str) or not ws_url:
+        console.print(
+            f"[red]Celesto did not return a terminal connection for {computer_id}. Run `celesto computer ssh {computer_id}` again.[/red]"
+        )
+        raise typer.Exit(1)
 
     console.print(f"[dim]Connecting to {computer_id}...[/dim]")
 
+    ws = None
     try:
-        ws = websockets.sync.client.connect(
-            ws_url,
-            additional_headers={"Authorization": f"Bearer {key}"},
+        ws = websockets.sync.client.connect(ws_url)
+        rows, cols = _terminal_dimensions()
+        ws.send(json.dumps({"type": "resize", "cols": cols, "rows": rows}))
+    except Exception:
+        if ws is not None:
+            _close_terminal_session(ws)
+        console.print(
+            f"[red]Could not connect to {computer_id}. Run `celesto computer ssh {computer_id}` again.[/red]"
         )
-    except Exception as e:
-        console.print(f"[red]Connection failed:[/red] {e}")
         raise typer.Exit(1)
-
-    ws.send(json.dumps({"token": key}))
-
-    rows, cols = _terminal_dimensions()
-    ws.send(json.dumps({"type": "resize", "cols": cols, "rows": rows}))
 
     console.print("[dim]Connected. Press Ctrl+] to disconnect.[/dim]")
 
     stdin_fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(stdin_fd)
     done = threading.Event()
+    terminal_failed = threading.Event()
 
     def recv_loop():
         try:
@@ -584,14 +604,15 @@ def ssh_to_computer(
                 except TimeoutError:
                     continue
                 if isinstance(msg, str):
+                    if _is_terminal_gateway_error(msg):
+                        terminal_failed.set()
+                        break
                     os.write(sys.stdout.fileno(), msg.encode("utf-8"))
                 elif isinstance(msg, bytes):
                     os.write(sys.stdout.fileno(), msg)
         except websockets.exceptions.ConnectionClosed as e:
             if e.rcvd and e.rcvd.code != 1000:
-                console.print(
-                    f"\n[red]Connection closed: code={e.rcvd.code} reason={e.rcvd.reason}[/red]"
-                )
+                terminal_failed.set()
         except OSError:
             pass
         finally:
@@ -616,6 +637,12 @@ def ssh_to_computer(
 
         while not done.is_set():
             try:
+                readable, _, _ = select.select([stdin_fd], [], [], 0.2)
+            except (OSError, ValueError):
+                break
+            if not readable:
+                continue
+            try:
                 data = os.read(stdin_fd, 4096)
             except OSError:
                 break
@@ -634,11 +661,14 @@ def ssh_to_computer(
         done.set()
         termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_settings)
         signal.signal(signal.SIGWINCH, old_sigwinch)
-        try:
-            ws.close()
-        except Exception:
-            pass
+        _close_terminal_session(ws)
         console.print("\n[dim]Disconnected.[/dim]")
+
+    if terminal_failed.is_set():
+        console.print(
+            f"[red]The terminal connection for {computer_id} ended unexpectedly. Run `celesto computer ssh {computer_id}` again.[/red]"
+        )
+        raise typer.Exit(1)
 
 
 @app.command("stop")

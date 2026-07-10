@@ -218,7 +218,8 @@ Unpublish the port when you are done:
 celesto computer port unpublish "$COMPUTER_NAME" --port 8000
 ```
 
-To open an interactive terminal, connect to the same computer:
+To open an interactive terminal through Celesto's fast terminal gateway, connect
+to the same computer. Your account needs write access to that computer:
 
 ```bash
 celesto computer ssh "$COMPUTER_NAME"
@@ -327,6 +328,24 @@ can still return cleanly.
 Current caveat: `run()` and `exec()` run as the computer image's default exec
 user. The SDK does not yet expose a user selector.
 
+### Create a Terminal Session
+
+Create a terminal session when your application needs an interactive shell. The
+returned `url` connects directly to Celesto's fast terminal gateway and contains
+a short-lived secret token. Creating a terminal session requires write access to
+the computer.
+
+```python
+from celesto import Computer
+
+computer = Computer.get("curie")
+session = computer.create_terminal_session()
+print(session["terminal_id"], session["expires_at"])
+```
+
+Pass `session["url"]` directly to a WebSocket client before it expires. Do not
+log or share the URL because it includes the terminal token.
+
 ### List, Stop, Start, and Delete
 
 `computer_id` can be `computer.id` from `Computer()` or a computer name shown by
@@ -347,6 +366,7 @@ for computer in computers:
 | `Computer.list()` | List computers in your account |
 | `Computer.list(status="running", template_id="browser-agent", project_id="proj_123", limit=10)` | List matching computers |
 | `Computer.get(computer_id)` | Get one computer by name or ID |
+| `computer.create_terminal_session()` | Create a short-lived fast terminal connection |
 | `computer.stop()` | Stop a running computer |
 | `computer.start()` | Start a stopped computer |
 | `computer.delete()` | Delete a computer |
