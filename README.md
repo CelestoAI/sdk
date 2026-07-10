@@ -254,6 +254,38 @@ try {
 See the [JavaScript and TypeScript README](./ts/README.md) for Node.js
 requirements, Gatekeeper examples, and terminal connection details.
 
+## Run Pi in a Celesto Computer
+
+[Pi](https://github.com/earendil-works/pi) is a coding agent that works from
+your terminal. The Celesto extension runs Pi's coding tools in a separate
+computer while the interface, conversation history, and model credentials stay
+on your machine.
+
+You need Node.js 22.19 or newer, Pi configured with a model provider, and
+`CELESTO_API_KEY` set as shown above. Install the extension once:
+
+```bash
+pi install npm:@celestoai/pi
+```
+
+From the project you want to work on, start Pi with Celesto:
+
+```bash
+pi --celesto
+```
+
+Pi copies the project to `/workspace` and runs its read, write, edit, and shell
+tools there. Copy the resulting changes back to your local project from inside
+Pi:
+
+```text
+/celesto sync
+```
+
+Use `/celesto status` to see the active computer or `/celesto keep` to preserve
+an extension-created computer after Pi exits. See the [Pi extension guide](./pi/README.md)
+for reuse and file-exclusion options.
+
 ## Python Computers API
 
 Use the Python SDK when you want Celesto inside an app, script, or agent.
