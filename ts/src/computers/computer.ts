@@ -1,15 +1,19 @@
 import { ClientConfig } from "../core/config";
 import { ComputersClient } from "./client";
 import {
+  ComputerCommandHistoryResponse,
   ComputerConnectionInfo,
   ComputerExecResponse,
+  ComputerExecStreamEvent,
   ComputerInfo,
   ComputerPublishedPortInfo,
   ComputerStatus,
   CreateComputerParams,
   ExecParams,
+  ListCommandHistoryParams,
   ListComputersParams,
   SandboxTemplateInfo,
+  TerminalSessionInfo,
 } from "./types";
 
 const defaultConfig = (): ClientConfig => ({
@@ -138,6 +142,39 @@ export class Computer {
   /** Alias for run(). */
   async exec(command: string, params: ExecParams = {}): Promise<ComputerExecResponse> {
     return this.run(command, params);
+  }
+
+  /** Run a shell command and stream output and exit events as they arrive. */
+  runStream(
+    command: string,
+    params: ExecParams = {},
+  ): AsyncGenerator<ComputerExecStreamEvent> {
+    return this.client.execStream(this.id, command, params);
+  }
+
+  /** Alias for runStream(). */
+  execStream(
+    command: string,
+    params: ExecParams = {},
+  ): AsyncGenerator<ComputerExecStreamEvent> {
+    return this.runStream(command, params);
+  }
+
+  /** List recent commands executed on this computer. */
+  async listCommandHistory(
+    params: ListCommandHistoryParams = {},
+  ): Promise<ComputerCommandHistoryResponse> {
+    return this.client.listCommandHistory(this.id, params);
+  }
+
+  /** Create a short-lived direct connection to Celesto's terminal gateway. */
+  async createTerminalSession(): Promise<TerminalSessionInfo> {
+    return this.client.createTerminalSession(this.id);
+  }
+
+  /** @deprecated Use createTerminalSession(). */
+  async getTerminalConnection(): Promise<TerminalSessionInfo> {
+    return this.createTerminalSession();
   }
 
   /** Stop this computer and update the local data. */

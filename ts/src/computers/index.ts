@@ -1,7 +1,10 @@
 export { Computer } from "./computer";
 export type {
+  ComputerCommandHistoryEntry,
+  ComputerCommandHistoryResponse,
   ComputerConnectionInfo,
   ComputerExecResponse,
+  ComputerExecStreamEvent,
   ComputerInfo,
   ComputerListResponse,
   ComputerPublishedPortInfo,
@@ -9,7 +12,9 @@ export type {
   PublishedPortStatus,
   CreateComputerParams,
   ExecParams,
+  ListCommandHistoryParams,
   ListComputersParams,
   SandboxTemplateInfo,
   TerminalConnectionInfo,
+  TerminalSessionInfo,
 } from "./types";

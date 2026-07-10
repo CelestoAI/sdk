@@ -16,8 +16,11 @@ export type {
 } from "./gatekeeper";
 export { Computer } from "./computers";
 export type {
+  ComputerCommandHistoryEntry,
+  ComputerCommandHistoryResponse,
   ComputerConnectionInfo,
   ComputerExecResponse,
+  ComputerExecStreamEvent,
   ComputerInfo,
   ComputerListResponse,
   ComputerPublishedPortInfo,
@@ -25,9 +28,11 @@ export type {
   PublishedPortStatus,
   CreateComputerParams,
   ExecParams,
+  ListCommandHistoryParams,
   ListComputersParams,
   SandboxTemplateInfo,
   TerminalConnectionInfo,
+  TerminalSessionInfo,
 } from "./computers";
 export type { ClientConfig, RequestOverrides } from "./core/config";
 export { CelestoError, CelestoApiError, CelestoNetworkError } from "./core/errors";

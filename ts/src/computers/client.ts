@@ -1,17 +1,22 @@
 import { buildRequestContext, ClientConfig, RequestOverrides } from "../core/config";
-import { request } from "../core/http";
+import { CelestoNetworkError } from "../core/errors";
+import { request, requestStream } from "../core/http";
 import {
+  ComputerCommandHistoryEntry,
+  ComputerCommandHistoryResponse,
   ComputerConnectionInfo,
   ComputerExecResponse,
+  ComputerExecStreamEvent,
   ComputerInfo,
   ComputerListResponse,
   ComputerPublishedPortInfo,
   ComputerStatus,
   CreateComputerParams,
   ExecParams,
+  ListCommandHistoryParams,
   ListComputersParams,
   SandboxTemplateInfo,
-  TerminalConnectionInfo,
+  TerminalSessionInfo,
 } from "./types";
 
 interface ComputerConnectionInfoWire {
@@ -54,6 +59,35 @@ interface ComputerExecResponseWire {
   exit_code: number;
   stdout: string;
   stderr: string;
+  command_id?: string | null;
+  duration_ms?: number | null;
+  timed_out?: boolean | null;
+}
+
+interface ComputerCommandHistoryEntryWire {
+  command_id: string;
+  source: string;
+  status: string;
+  started_at?: string | null;
+  ended_at?: string | null;
+  duration_ms?: number | null;
+  timeout_seconds?: number | null;
+  exit_code?: number | null;
+  stdout_bytes?: number | null;
+  stderr_bytes?: number | null;
+  error_type?: string | null;
+}
+
+interface ComputerCommandHistoryResponseWire {
+  commands: ComputerCommandHistoryEntryWire[];
+  count: number;
+}
+
+interface TerminalConnectionInfoWire {
+  terminal_id: string;
+  gateway_url: string;
+  token: string;
+  expires_at: string;
 }
 
 interface SandboxTemplateInfoWire {
@@ -109,11 +143,48 @@ const toComputerInfo = (payload: ComputerInfoWire): ComputerInfo => ({
   stoppedAt: payload.stopped_at ?? null,
 });
 
-const toExecResponse = (payload: ComputerExecResponseWire): ComputerExecResponse => ({
+const toExecResponse = (payload: ComputerExecResponseWire): ComputerExecResponse => {
+  const response: ComputerExecResponse = {
+    exitCode: payload.exit_code,
+    stdout: payload.stdout,
+    stderr: payload.stderr,
+  };
+  if (payload.command_id !== undefined) response.commandId = payload.command_id;
+  if (payload.duration_ms !== undefined) response.durationMs = payload.duration_ms;
+  if (payload.timed_out !== undefined) response.timedOut = payload.timed_out;
+  return response;
+};
+
+const toCommandHistoryEntry = (
+  payload: ComputerCommandHistoryEntryWire,
+): ComputerCommandHistoryEntry => ({
+  commandId: payload.command_id,
+  source: payload.source,
+  status: payload.status,
+  startedAt: payload.started_at,
+  endedAt: payload.ended_at,
+  durationMs: payload.duration_ms,
+  timeoutSeconds: payload.timeout_seconds,
   exitCode: payload.exit_code,
-  stdout: payload.stdout,
-  stderr: payload.stderr,
+  stdoutBytes: payload.stdout_bytes,
+  stderrBytes: payload.stderr_bytes,
+  errorType: payload.error_type,
 });
+
+const toTerminalConnectionInfo = (
+  payload: TerminalConnectionInfoWire,
+): TerminalSessionInfo => {
+  const separator = payload.gateway_url.includes("?") ? "&" : "?";
+  return {
+    terminalId: payload.terminal_id,
+    gatewayUrl: payload.gateway_url,
+    url: `${payload.gateway_url}${separator}token=${encodeURIComponent(payload.token)}`,
+    token: payload.token,
+    expiresAt: payload.expires_at,
+    headers: {},
+    firstMessage: "",
+  };
+};
 
 const toSandboxTemplateInfo = (payload: SandboxTemplateInfoWire): SandboxTemplateInfo => ({
   id: payload.id,
@@ -263,12 +334,128 @@ const pickOverrides = (options?: RequestOverrides): RequestOverrides => ({
   signal: options?.signal,
 });
 
+const optionalNumber = (value: unknown): number | undefined =>
+  typeof value === "number" ? value : undefined;
+
+const optionalBoolean = (value: unknown): boolean | undefined =>
+  typeof value === "boolean" ? value : undefined;
+
+const parseExecStreamEvent = (value: unknown): ComputerExecStreamEvent => {
+  if (!value || typeof value !== "object") {
+    throw new Error("Celesto returned an invalid command stream event.");
+  }
+
+  const event = value as Record<string, unknown>;
+  if (event.type === "stdout" || event.type === "stderr") {
+    if (typeof event.data !== "string") {
+      throw new Error("Celesto returned command output without text data.");
+    }
+    return { type: event.type, data: event.data };
+  }
+
+  if (event.type === "started") {
+    if (
+      typeof event.command_id !== "string" ||
+      typeof event.started_at_unix_ms !== "number" ||
+      typeof event.timeout_seconds !== "number"
+    ) {
+      throw new Error("Celesto returned an invalid command-start event.");
+    }
+    return {
+      type: "started",
+      commandId: event.command_id,
+      startedAtUnixMs: event.started_at_unix_ms,
+      timeoutSeconds: event.timeout_seconds,
+    };
+  }
+
+  if (event.type === "exit") {
+    if (typeof event.exit_code !== "number") {
+      throw new Error("Celesto returned an invalid command-exit event.");
+    }
+    const result: Extract<ComputerExecStreamEvent, { type: "exit" }> = {
+      type: "exit",
+      exitCode: event.exit_code,
+    };
+    if (typeof event.command_id === "string") result.commandId = event.command_id;
+    const startedAtUnixMs = optionalNumber(event.started_at_unix_ms);
+    const endedAtUnixMs = optionalNumber(event.ended_at_unix_ms);
+    const durationMs = optionalNumber(event.duration_ms);
+    const timedOut = optionalBoolean(event.timed_out);
+    if (startedAtUnixMs !== undefined) result.startedAtUnixMs = startedAtUnixMs;
+    if (endedAtUnixMs !== undefined) result.endedAtUnixMs = endedAtUnixMs;
+    if (durationMs !== undefined) result.durationMs = durationMs;
+    if (timedOut !== undefined) result.timedOut = timedOut;
+    return result;
+  }
+
+  throw new Error("Celesto returned an unknown command stream event.");
+};
+
+const parseSseDataLine = (line: string): ComputerExecStreamEvent | undefined => {
+  const text = line.trim();
+  if (!text || !text.startsWith("data:")) {
+    return undefined;
+  }
+  const data = text.slice("data:".length).trim();
+  if (!data || data === "[DONE]") {
+    return undefined;
+  }
+  try {
+    return parseExecStreamEvent(JSON.parse(data));
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error("Celesto returned malformed JSON in the command stream.");
+    }
+    throw error;
+  }
+};
+
+const createManagedSignal = (
+  signal: AbortSignal | undefined,
+  timeoutMs: number | undefined,
+): { signal: AbortSignal | undefined; cleanup: () => void } => {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return { signal, cleanup: () => {} };
+  }
+
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) {
+    abort();
+  } else {
+    signal?.addEventListener("abort", abort, { once: true });
+  }
+  const timer = setTimeout(abort, timeoutMs);
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+    },
+  };
+};
+
+const toNetworkError = (error: unknown): CelestoNetworkError => {
+  if (error instanceof CelestoNetworkError) return error;
+  const cause = error instanceof Error ? error : new Error(String(error));
+  return new CelestoNetworkError(cause.message, cause);
+};
+
+const withFallbackCommandId = (
+  event: ComputerExecStreamEvent,
+  commandId: string | undefined,
+): ComputerExecStreamEvent => {
+  if (event.type !== "exit" || event.commandId || !commandId) return event;
+  return { ...event, commandId };
+};
+
 /**
  * Client for managing sandboxed computers (AI sandboxes).
  *
- * Provides create/list/get/exec/stop/start/delete over HTTP, plus
- * `getTerminalConnection()` which returns the URL and headers needed
- * to open a WebSocket terminal with any WS library of your choice.
+ * Provides computer lifecycle, buffered and streaming command execution,
+ * command history, published ports, and direct terminal gateway sessions.
  *
  * @example
  * ```ts
@@ -342,16 +529,129 @@ export class ComputersClient {
     options?: RequestOverrides,
   ): Promise<ComputerExecResponse> {
     const ctx = buildRequestContext(this.config);
-    const data = await request<ComputerExecResponseWire>(ctx, {
-      method: "POST",
-      path: computersPath(`/${encodeURIComponent(computerId)}/exec`),
-      body: {
-        command,
-        timeout: params.timeout ?? 30,
-      },
+    const managedSignal = createManagedSignal(
+      params.signal ?? options?.signal,
+      this.config.timeoutMs,
+    );
+    try {
+      const data = await request<ComputerExecResponseWire>(ctx, {
+        method: "POST",
+        path: computersPath(`/${encodeURIComponent(computerId)}/exec`),
+        body: {
+          command,
+          timeout: params.timeout ?? 30,
+        },
+        headers: options?.headers,
+        signal: managedSignal.signal,
+      });
+      return toExecResponse(data);
+    } finally {
+      managedSignal.cleanup();
+    }
+  }
+
+  async *execStream(
+    computerId: string,
+    command: string,
+    params: ExecParams = {},
+    options?: RequestOverrides,
+  ): AsyncGenerator<ComputerExecStreamEvent> {
+    const ctx = buildRequestContext(this.config);
+    const managedSignal = createManagedSignal(
+      params.signal ?? options?.signal,
+      this.config.timeoutMs,
+    );
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    let completed = false;
+
+    try {
+      const response = await requestStream(ctx, {
+        method: "POST",
+        path: computersPath(`/${encodeURIComponent(computerId)}/exec/stream`),
+        body: {
+          command,
+          timeout: params.timeout ?? 30,
+        },
+        headers: options?.headers,
+        signal: managedSignal.signal,
+      });
+      if (!response.body) {
+        throw new Error("Celesto did not return a command output stream.");
+      }
+
+      const responseCommandId = response.headers.get("x-celesto-command-id") ?? undefined;
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        let chunk: ReadableStreamReadResult<Uint8Array>;
+        try {
+          chunk = await reader.read();
+        } catch (error) {
+          throw toNetworkError(error);
+        }
+        if (chunk.done) {
+          completed = true;
+          buffer += decoder.decode();
+          break;
+        }
+        buffer += decoder.decode(chunk.value, { stream: true });
+
+        let newlineIndex = buffer.indexOf("\n");
+        while (newlineIndex !== -1) {
+          const line = buffer.slice(0, newlineIndex).replace(/\r$/, "");
+          buffer = buffer.slice(newlineIndex + 1);
+          const parsed = parseSseDataLine(line);
+          if (parsed) {
+            const event = withFallbackCommandId(parsed, responseCommandId);
+            yield event;
+            if (event.type === "exit") return;
+          }
+          newlineIndex = buffer.indexOf("\n");
+        }
+      }
+
+      if (buffer) {
+        const parsed = parseSseDataLine(buffer);
+        if (parsed) {
+          const event = withFallbackCommandId(parsed, responseCommandId);
+          yield event;
+          if (event.type === "exit") return;
+        }
+      }
+      throw new Error("Command stream ended before Celesto returned an exit status.");
+    } finally {
+      if (reader) {
+        if (!completed) {
+          try {
+            await reader.cancel();
+          } catch {
+            // The request may already be aborted or disconnected.
+          }
+        }
+        reader.releaseLock();
+      }
+      managedSignal.cleanup();
+    }
+  }
+
+  async listCommandHistory(
+    computerId: string,
+    params: ListCommandHistoryParams = {},
+    options?: RequestOverrides,
+  ): Promise<ComputerCommandHistoryResponse> {
+    const ctx = buildRequestContext(this.config);
+    const data = await request<ComputerCommandHistoryResponseWire>(ctx, {
+      method: "GET",
+      path: computersPath(`/${encodeURIComponent(computerId)}/commands`),
+      query: { limit: params.limit },
       ...pickOverrides(options),
     });
-    return toExecResponse(data);
+    return {
+      commands: data.commands.map(toCommandHistoryEntry),
+      count: data.count,
+    };
   }
 
   async stop(computerId: string, options?: RequestOverrides): Promise<ComputerInfo> {
@@ -426,46 +726,25 @@ export class ComputersClient {
     return toPublishedPortInfo(data);
   }
 
-  /**
-   * Get connection info for opening a WebSocket terminal session.
-   *
-   * Accepts either a computer ID (e.g. `cmp_xxx`) or a human-readable name.
-   * The name is resolved to the canonical ID via a GET call — the backend's
-   * WebSocket endpoint does not resolve names on its own.
-   *
-   * Returns the URL, headers, and first message needed to open the connection
-   * with any WebSocket library of your choice.
-   *
-   * @example
-   * ```ts
-   * const conn = await client.getTerminalConnection("my-computer");
-   * const ws = new WebSocket(conn.url, { headers: conn.headers });
-   * ws.on("open", () => ws.send(conn.firstMessage));
-   * ws.on("message", (data) => process.stdout.write(data));
-   * ```
-   */
-  async getTerminalConnection(computerIdOrName: string): Promise<TerminalConnectionInfo> {
-    const info = await this.get(computerIdOrName);
+  /** Create a short-lived direct connection to Celesto's terminal gateway. */
+  async createTerminalSession(
+    computerIdOrName: string,
+    options?: RequestOverrides,
+  ): Promise<TerminalSessionInfo> {
     const ctx = buildRequestContext(this.config);
+    const data = await request<TerminalConnectionInfoWire>(ctx, {
+      method: "POST",
+      path: computersPath(`/${encodeURIComponent(computerIdOrName)}/terminals`),
+      ...pickOverrides(options),
+    });
+    return toTerminalConnectionInfo(data);
+  }
 
-    if (!ctx.token) {
-      throw new Error("A token is required for terminal connections");
-    }
-
-    const wsBase = ctx.baseUrl.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
-    const url = `${wsBase}/v1/computers/${encodeURIComponent(info.id)}/terminal`;
-
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${ctx.token}`,
-    };
-    if (ctx.organizationId) {
-      headers["X-Current-Organization"] = ctx.organizationId;
-    }
-
-    return {
-      url,
-      headers,
-      firstMessage: JSON.stringify({ token: ctx.token }),
-    };
+  /** @deprecated Use createTerminalSession(). */
+  async getTerminalConnection(
+    computerIdOrName: string,
+    options?: RequestOverrides,
+  ): Promise<TerminalSessionInfo> {
+    return this.createTerminalSession(computerIdOrName, options);
   }
 }

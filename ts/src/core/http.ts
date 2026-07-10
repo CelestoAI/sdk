@@ -61,9 +61,11 @@ const extractErrorMessage = (data: unknown, status: number): string => {
   return `Request failed with status ${status}`;
 };
 
-export const request = async <T>(ctx: RequestContext, options: RequestOptions): Promise<T> => {
+const buildRequestInit = (
+  ctx: RequestContext,
+  options: RequestOptions,
+): { url: string; init: RequestInit } => {
   const url = `${joinUrl(ctx.baseUrl, options.path)}${buildQuery(options.query)}`;
-
   const headers: Record<string, string> = {
     ...(ctx.headers ?? {}),
     ...(options.headers ?? {}),
@@ -72,11 +74,9 @@ export const request = async <T>(ctx: RequestContext, options: RequestOptions): 
   if (ctx.token) {
     headers.Authorization = `Bearer ${ctx.token}`;
   }
-
   if (ctx.organizationId) {
     headers["X-Current-Organization"] = ctx.organizationId;
   }
-
   if (ctx.userAgent && !headers["User-Agent"]) {
     headers["User-Agent"] = ctx.userAgent;
   }
@@ -84,17 +84,19 @@ export const request = async <T>(ctx: RequestContext, options: RequestOptions): 
   const init: RequestInit = {
     method: options.method,
     headers,
-    body: undefined,
     signal: options.signal,
   };
-
   if (options.body !== undefined) {
     headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
     init.body = headers["Content-Type"].includes("application/json")
       ? JSON.stringify(options.body)
       : (options.body as BodyInit);
   }
+  return { url, init };
+};
 
+export const request = async <T>(ctx: RequestContext, options: RequestOptions): Promise<T> => {
+  const { url, init } = buildRequestInit(ctx, options);
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let controller: AbortController | undefined;
 
@@ -124,5 +126,33 @@ export const request = async <T>(ctx: RequestContext, options: RequestOptions): 
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
+  }
+};
+
+/** Make an authenticated request without consuming its response body. */
+export const requestStream = async (
+  ctx: RequestContext,
+  options: RequestOptions,
+): Promise<Response> => {
+  const { url, init } = buildRequestInit(ctx, options);
+  try {
+    const response = await ctx.fetch(url, init);
+    if (!response.ok) {
+      const data = await parseResponseBody(response);
+      const message = extractErrorMessage(data, response.status);
+      throw new CelestoApiError(
+        message,
+        response.status,
+        data,
+        response.headers.get("x-request-id") ?? undefined,
+      );
+    }
+    return response;
+  } catch (err) {
+    if (err instanceof CelestoApiError) {
+      throw err;
+    }
+    const error = err instanceof Error ? err : new Error(String(err));
+    throw new CelestoNetworkError(error.message, error);
   }
 };
