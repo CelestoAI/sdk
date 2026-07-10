@@ -353,6 +353,8 @@ export async function downloadRemoteWorkspace(
       cwd: root,
       file: archivePath,
       preservePaths: false,
+      chmod: true,
+      processUmask: 0o022,
       filter: (entryPath, entry) => {
         const entryType = "type" in entry ? entry.type : undefined;
         return (

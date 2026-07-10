@@ -13,16 +13,17 @@ import type {
 
 import celestoPiExtension from "../src/index.js";
 
-test("the installed extension leaves local tools unchanged without --celesto", async () => {
+test("local tools use the session cwd without --celesto", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "celesto-extension-test-"));
-  const previousCwd = process.cwd();
   try {
-    process.chdir(root);
     await writeFile(path.join(root, "hello.txt"), "hello from local\n");
 
     const flags = new Map<string, boolean | string | undefined>();
     const tools = new Map<string, ToolDefinition>();
-    const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => unknown>>();
+    const handlers = new Map<
+      string,
+      Array<(event: unknown, ctx: ExtensionContext) => unknown>
+    >();
     const commands = new Set<string>();
     const api = {
       registerFlag(name: string, options: { default?: boolean | string }) {
@@ -37,7 +38,10 @@ test("the installed extension leaves local tools unchanged without --celesto", a
       registerCommand(name: string) {
         commands.add(name);
       },
-      on(event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) {
+      on(
+        event: string,
+        handler: (event: unknown, ctx: ExtensionContext) => unknown,
+      ) {
         const existing = handlers.get(event) ?? [];
         existing.push(handler);
         handlers.set(event, existing);
@@ -75,9 +79,11 @@ test("the installed extension leaves local tools unchanged without --celesto", a
       context,
     );
     assert.equal(result?.content[0]?.type, "text");
-    assert.match(result?.content[0]?.type === "text" ? result.content[0].text : "", /hello from local/);
+    assert.match(
+      result?.content[0]?.type === "text" ? result.content[0].text : "",
+      /hello from local/,
+    );
   } finally {
-    process.chdir(previousCwd);
     await rm(root, { recursive: true, force: true });
   }
 });

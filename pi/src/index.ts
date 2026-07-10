@@ -119,11 +119,11 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     type: "string",
   });
 
-  const localRoot = process.cwd();
-  const localRead = createReadTool(localRoot);
-  const localWrite = createWriteTool(localRoot);
-  const localEdit = createEditTool(localRoot);
-  const localBash = createBashTool(localRoot);
+  const registrationRoot = process.cwd();
+  const localRead = createReadTool(registrationRoot);
+  const localWrite = createWriteTool(registrationRoot);
+  const localEdit = createEditTool(registrationRoot);
+  const localBash = createBashTool(registrationRoot);
 
   let modeEnabled = false;
   let runtime: RuntimeState | undefined;
@@ -433,7 +433,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     ...localRead,
     async execute(id, params, signal, onUpdate, ctx) {
       if (!modeEnabled) {
-        return localRead.execute(id, params, signal, onUpdate);
+        return createReadTool(ctx.cwd).execute(id, params, signal, onUpdate);
       }
       const state = await ensureRuntime(ctx);
       return createReadTool(REMOTE_WORKSPACE, {
@@ -446,7 +446,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     ...localWrite,
     async execute(id, params, signal, onUpdate, ctx) {
       if (!modeEnabled) {
-        return localWrite.execute(id, params, signal, onUpdate);
+        return createWriteTool(ctx.cwd).execute(id, params, signal, onUpdate);
       }
       const state = await ensureRuntime(ctx);
       return createWriteTool(REMOTE_WORKSPACE, {
@@ -459,7 +459,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     ...localEdit,
     async execute(id, params, signal, onUpdate, ctx) {
       if (!modeEnabled) {
-        return localEdit.execute(id, params, signal, onUpdate);
+        return createEditTool(ctx.cwd).execute(id, params, signal, onUpdate);
       }
       const state = await ensureRuntime(ctx);
       return createEditTool(REMOTE_WORKSPACE, {
@@ -472,7 +472,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     ...localBash,
     async execute(id, params, signal, onUpdate, ctx) {
       if (!modeEnabled) {
-        return localBash.execute(id, params, signal, onUpdate);
+        return createBashTool(ctx.cwd).execute(id, params, signal, onUpdate);
       }
       const state = await ensureRuntime(ctx);
       return createBashTool(REMOTE_WORKSPACE, {
@@ -491,7 +491,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
 
   pi.on("before_agent_start", async (event) => {
     if (!runtime) return undefined;
-    const currentDirectory = `Current working directory: ${localRoot}`;
+    const currentDirectory = `Current working directory: ${runtime.localRoot}`;
     const remoteDirectory = `Current working directory: ${REMOTE_WORKSPACE} (Celesto computer: ${runtime.computerName})`;
     return {
       systemPrompt: event.systemPrompt.includes(currentDirectory)

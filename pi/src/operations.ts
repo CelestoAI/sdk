@@ -14,6 +14,7 @@ import type {
 } from "@celestoai/sdk";
 
 export const REMOTE_WORKSPACE = "/workspace";
+const REMOTE_WRITE_CHUNK_CHARACTERS = 180_000;
 
 export interface RemoteComputer {
   run(command: string, params?: ExecParams): Promise<ComputerExecResponse>;
@@ -117,15 +118,53 @@ export async function writeRemoteFile(
     ? content.toString("base64")
     : Buffer.from(content).toString("base64");
   const parent = path.posix.dirname(remotePath);
-  const template = `${remotePath}.celesto.XXXXXX`;
-  const command = [
-    "set -eu",
-    `mkdir -p ${shellQuote(parent)}`,
-    `tmp=$(mktemp ${shellQuote(template)})`,
-    `printf %s ${shellQuote(encoded)} | base64 -d > "$tmp"`,
-    `mv "$tmp" ${shellQuote(remotePath)}`,
-  ].join("; ");
-  await execChecked(computer, command, `Write ${remotePath}`);
+  const transferId = randomUUID();
+  const encodedPath = `${remotePath}.celesto.${transferId}.b64`;
+  const temporaryPath = `${remotePath}.celesto.${transferId}.tmp`;
+
+  try {
+    await execChecked(
+      computer,
+      [
+        "set -eu",
+        `mkdir -p ${shellQuote(parent)}`,
+        "umask 077",
+        `: > ${shellQuote(encodedPath)}`,
+        `: > ${shellQuote(temporaryPath)}`,
+      ].join("; "),
+      `Prepare ${remotePath}`,
+    );
+    for (
+      let offset = 0;
+      offset < encoded.length;
+      offset += REMOTE_WRITE_CHUNK_CHARACTERS
+    ) {
+      const chunk = encoded.slice(offset, offset + REMOTE_WRITE_CHUNK_CHARACTERS);
+      await execChecked(
+        computer,
+        `printf %s ${shellQuote(chunk)} >> ${shellQuote(encodedPath)}`,
+        `Write ${remotePath}`,
+        { timeout: 300 },
+      );
+    }
+    await execChecked(
+      computer,
+      [
+        "set -eu",
+        `base64 -d ${shellQuote(encodedPath)} > ${shellQuote(temporaryPath)}`,
+        `rm -f -- ${shellQuote(encodedPath)}`,
+        `mv ${shellQuote(temporaryPath)} ${shellQuote(remotePath)}`,
+      ].join("; "),
+      `Finish ${remotePath}`,
+      { timeout: 300 },
+    );
+  } finally {
+    await computer
+      .run(
+        `rm -f -- ${shellQuote(encodedPath)} ${shellQuote(temporaryPath)}`,
+      )
+      .catch(() => undefined);
+  }
 }
 
 export async function removeRemotePath(

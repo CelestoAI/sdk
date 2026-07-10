@@ -13,6 +13,7 @@ import {
   createCelestoWriteOperations,
   shellQuote,
   toRemotePath,
+  writeRemoteFile,
   type RemoteComputer,
 } from "../src/operations.js";
 
@@ -77,10 +78,29 @@ test("read and write operations transfer file contents as base64", async () => {
 
   const write = createCelestoWriteOperations(computer, "/project");
   await write.writeFile("/project/a.txt", "updated");
-  const command = computer.commands[1] ?? "";
-  assert.match(command, /mkdir -p/);
-  assert.match(command, new RegExp(Buffer.from("updated").toString("base64")));
-  assert.match(command, /mv/);
+  const commands = computer.commands.slice(1).join("\n");
+  assert.match(commands, /mkdir -p/);
+  assert.ok(commands.includes(Buffer.from("updated").toString("base64")));
+  assert.match(commands, /base64 -d/);
+  assert.match(commands, /mv/);
+});
+
+test("writeRemoteFile sends large payloads in bounded chunks", async () => {
+  const computer = new FakeComputer();
+  const content = Buffer.alloc(200_000, 0xab);
+  const encoded = content.toString("base64");
+
+  await writeRemoteFile(computer, "/workspace/large.bin", content);
+
+  const appendCommands = computer.commands.filter((command) =>
+    command.includes("printf %s"),
+  );
+  assert.equal(appendCommands.length, 2);
+  const uploaded = appendCommands
+    .map((command) => command.match(/^printf %s '([^']*)'/)?.[1] ?? "")
+    .join("");
+  assert.equal(uploaded, encoded);
+  assert.ok(appendCommands.every((command) => command.length < 181_000));
 });
 
 test("bash operations stream stdout and stderr and pass the abort signal", async () => {

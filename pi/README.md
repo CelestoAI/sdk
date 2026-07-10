@@ -1,10 +1,15 @@
 # Celesto for Pi
 
-Run Pi's coding tools on a separate Celesto computer while keeping the Pi interface, conversation history, and model credentials on your machine.
+Run Pi's coding tools away from your laptop while keeping its interface and
+conversation history local. A Celesto computer is an isolated remote computer
+that holds your project and runs the tools. Model credentials are the secrets
+Pi uses to access an AI model. They stay on your machine.
 
 ## Quickstart
 
-You need Node.js 22.19 or newer, a configured [Pi](https://github.com/earendil-works/pi), and a Celesto API key.
+Before starting, install [Pi](https://github.com/earendil-works/pi) and
+configure it with a model provider. You also need Node.js 22.19 or newer and a
+Celesto API key.
 
 Install the extension:
 
