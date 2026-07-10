@@ -1,3 +1,4 @@
+import { resolveClientConfig } from "../core/auth";
 import { ClientConfig } from "../core/config";
 import { ComputersClient } from "./client";
 import {
@@ -31,29 +32,29 @@ export class Computer {
   }
 
   /** Create a new computer and return an object with methods on it. */
-  static async create(params: CreateComputerParams = {}, config: ClientConfig = defaultConfig()): Promise<Computer> {
-    const client = new ComputersClient(config);
+  static async create(params: CreateComputerParams = {}, config?: ClientConfig): Promise<Computer> {
+    const client = new ComputersClient(await resolveClientConfig(config));
     const info = await client.create(params);
     return new Computer(client, info);
   }
 
   /** Load an existing computer by name or ID. */
-  static async get(computerIdOrName: string, config: ClientConfig = defaultConfig()): Promise<Computer> {
-    const client = new ComputersClient(config);
+  static async get(computerIdOrName: string, config?: ClientConfig): Promise<Computer> {
+    const client = new ComputersClient(await resolveClientConfig(config));
     const info = await client.get(computerIdOrName);
     return new Computer(client, info);
   }
 
   /** List computers in the current account. */
-  static async list(params: ListComputersParams = {}, config: ClientConfig = defaultConfig()): Promise<Computer[]> {
-    const client = new ComputersClient(config);
+  static async list(params: ListComputersParams = {}, config?: ClientConfig): Promise<Computer[]> {
+    const client = new ComputersClient(await resolveClientConfig(config));
     const response = await client.list(params);
     return response.computers.map((info) => new Computer(client, info));
   }
 
   /** List available computer templates. */
-  static async listTemplates(config: ClientConfig = defaultConfig()): Promise<SandboxTemplateInfo[]> {
-    const client = new ComputersClient(config);
+  static async listTemplates(config?: ClientConfig): Promise<SandboxTemplateInfo[]> {
+    const client = new ComputersClient(await resolveClientConfig(config));
     return client.listTemplates();
   }
 

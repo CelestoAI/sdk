@@ -32,7 +32,7 @@ Alternatively, export `CELESTO_API_KEY` or add it to the project's local `.env` 
 CELESTO_API_KEY="your-celesto-api-key"
 ```
 
-The extension checks the shell environment first, then `.env`, then credentials saved by `celesto auth login`.
+The bundled Celesto TypeScript SDK checks the shell environment first, then `.env`, then credentials saved by `celesto auth login`.
 
 From the project you want to work on, start Pi:
 

@@ -11,7 +11,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Computer, type ComputerStatus } from "@celestoai/sdk";
 
-import { requireCelestoApiKey } from "./auth.js";
 import {
   createCelestoBashOperations,
   createCelestoEditOperations,
@@ -161,9 +160,6 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     modeEnabled = enabled;
     if (!enabled) return undefined;
 
-    const apiKey = await requireCelestoApiKey(ctx.cwd);
-    const clientConfig = { token: apiKey };
-
     ctx.ui.setStatus("celesto", ctx.ui.theme.fg("muted", "Celesto: connecting"));
     let computer: Computer;
     let owned = false;
@@ -172,7 +168,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     let created = false;
 
     if (selected) {
-      computer = await Computer.get(selected, clientConfig);
+      computer = await Computer.get(selected);
       const sameSavedComputer =
         saved &&
         (saved.computerId === computer.id || saved.computerName === computer.name);
@@ -182,19 +178,19 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     } else if (saved) {
       const forkNeedsOwnComputer = event.reason === "fork" && saved.owned;
       if (forkNeedsOwnComputer) {
-        computer = await Computer.create({}, clientConfig);
+        computer = await Computer.create();
         owned = true;
         created = true;
       } else {
         try {
-          computer = await Computer.get(saved.computerId, clientConfig);
+          computer = await Computer.get(saved.computerId);
         } catch {
-          computer = await Computer.create({}, clientConfig);
+          computer = await Computer.create();
           owned = true;
           created = true;
         }
         if (["deleted", "deleting", "error"].includes(computer.status)) {
-          computer = await Computer.create({}, clientConfig);
+          computer = await Computer.create();
           owned = true;
           created = true;
         } else if (!created) {
@@ -204,7 +200,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
         }
       }
     } else {
-      computer = await Computer.create({}, clientConfig);
+      computer = await Computer.create();
       owned = true;
       created = true;
     }

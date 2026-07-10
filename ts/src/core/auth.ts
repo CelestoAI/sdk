@@ -1,16 +1,26 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { promisify, parseEnv } from "node:util";
+import { promisify } from "node:util";
+
+import { parse } from "dotenv";
+
+import type { ClientConfig } from "./config";
+import { CelestoError } from "./errors";
 
 const execFile = promisify(execFileCallback);
 
 export const MISSING_CREDENTIALS_MESSAGE =
   "No Celesto credentials found. Run pip install celesto && celesto auth login, or export CELESTO_API_KEY.";
 
-interface CredentialResolutionOptions {
+export interface CredentialResolutionOptions {
+  /** Directory containing the local .env file. Defaults to process.cwd(). */
+  cwd?: string;
+  /** Environment variables to inspect. Defaults to process.env. */
   env?: NodeJS.ProcessEnv;
+  /** Test or host override for reading .env. */
   readDotEnv?: (filePath: string) => Promise<string>;
+  /** Test or host override for loading credentials saved by the Celesto CLI. */
   loadSavedApiKey?: () => Promise<string | undefined>;
 }
 
@@ -25,7 +35,7 @@ async function readDotEnvApiKey(
 ): Promise<string | undefined> {
   try {
     const contents = await readDotEnv(path.join(cwd, ".env"));
-    return nonEmpty(parseEnv(contents).CELESTO_API_KEY);
+    return nonEmpty(parse(contents).CELESTO_API_KEY);
   } catch {
     return undefined;
   }
@@ -44,9 +54,8 @@ async function loadCliApiKey(): Promise<string | undefined> {
   }
 }
 
-/** Resolve Celesto credentials without exposing them to the remote computer. */
+/** Resolve a Celesto API key from local sources, in precedence order. */
 export async function resolveCelestoApiKey(
-  cwd: string,
   options: CredentialResolutionOptions = {},
 ): Promise<string | undefined> {
   const env = options.env ?? process.env;
@@ -54,7 +63,7 @@ export async function resolveCelestoApiKey(
   if (environmentKey) return environmentKey;
 
   const dotEnvKey = await readDotEnvApiKey(
-    cwd,
+    options.cwd ?? process.cwd(),
     options.readDotEnv ?? ((filePath) => readFile(filePath, "utf8")),
   );
   if (dotEnvKey) return dotEnvKey;
@@ -62,12 +71,14 @@ export async function resolveCelestoApiKey(
   return (options.loadSavedApiKey ?? loadCliApiKey)();
 }
 
-/** Resolve a local API key or return an actionable setup error. */
-export async function requireCelestoApiKey(
-  cwd: string,
+/** Resolve an API key while preserving explicit SDK configuration. */
+export async function resolveClientConfig(
+  config: ClientConfig = {},
   options: CredentialResolutionOptions = {},
-): Promise<string> {
-  const apiKey = await resolveCelestoApiKey(cwd, options);
-  if (!apiKey) throw new Error(MISSING_CREDENTIALS_MESSAGE);
-  return apiKey;
+): Promise<ClientConfig> {
+  if (nonEmpty(config.token) || nonEmpty(config.apiKey)) return config;
+
+  const apiKey = await resolveCelestoApiKey(options);
+  if (!apiKey) throw new CelestoError(MISSING_CREDENTIALS_MESSAGE);
+  return { ...config, token: apiKey };
 }

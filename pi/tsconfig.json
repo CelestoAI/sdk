@@ -6,7 +6,8 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@celestoai/sdk": ["../ts/src/index.ts"]
+      "@celestoai/sdk": ["../ts/src/index.ts"],
+      "dotenv": ["node_modules/dotenv/lib/main"]
     },
     "strict": true,
     "esModuleInterop": true,
