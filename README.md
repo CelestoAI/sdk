@@ -261,8 +261,9 @@ your terminal. The Celesto extension runs Pi's coding tools in a separate
 computer while the interface, conversation history, and model credentials stay
 on your machine.
 
-You need Node.js 22.19 or newer, Pi configured with a model provider, and
-`CELESTO_API_KEY` set as shown above. Install the extension once:
+You need Node.js 22.19 or newer and Pi configured with a model provider. Sign
+in with `celesto auth login`, export `CELESTO_API_KEY`, or add the key to the
+project's local `.env` file. Install the extension once:
 
 ```bash
 pi install npm:@celestoai/pi

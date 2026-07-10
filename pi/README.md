@@ -19,11 +19,20 @@ Install the extension:
 pi install npm:@celestoai/pi
 ```
 
-Set your Celesto API key:
+Sign in once with the Celesto CLI:
 
 ```bash
-export CELESTO_API_KEY="your-celesto-api-key"
+pip install celesto
+celesto auth login
 ```
+
+Alternatively, export `CELESTO_API_KEY` or add it to the project's local `.env` file:
+
+```bash .env
+CELESTO_API_KEY="your-celesto-api-key"
+```
+
+The extension checks the shell environment first, then `.env`, then credentials saved by `celesto auth login`.
 
 From the project you want to work on, start Pi:
 
