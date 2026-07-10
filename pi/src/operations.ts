@@ -13,7 +13,8 @@ import type {
   ExecParams,
 } from "@celestoai/sdk";
 
-export const REMOTE_WORKSPACE = "/workspace";
+export const REMOTE_WORKSPACE_DISPLAY = "$HOME/workspace";
+const LEGACY_REMOTE_WORKSPACE = "/workspace";
 const REMOTE_WRITE_CHUNK_CHARACTERS = 180_000;
 
 export interface RemoteComputer {
@@ -31,7 +32,7 @@ export function shellQuote(value: string): string {
 export function toRemotePath(
   inputPath: string,
   localRoot: string,
-  remoteRoot = REMOTE_WORKSPACE,
+  remoteRoot: string,
 ): string {
   const normalizedRemoteRoot = path.posix.resolve(remoteRoot);
   const asPosix = inputPath.replaceAll("\\", "/");
@@ -91,6 +92,36 @@ export async function execChecked(
     throw commandError(action, response);
   }
   return response;
+}
+
+/** Prepare $HOME/workspace and migrate a non-empty legacy /workspace. */
+export async function prepareRemoteWorkspace(
+  computer: RemoteComputer,
+  options: { legacyRoot?: string } = {},
+): Promise<string> {
+  const legacyRoot = options.legacyRoot ?? LEGACY_REMOTE_WORKSPACE;
+  const response = await execChecked(
+    computer,
+    [
+      "set -eu",
+      'home=$(cd "${HOME:?HOME is not set}" && pwd -P)',
+      'target="$home/workspace"',
+      `legacy=${shellQuote(legacyRoot)}`,
+      'target_has_files=false',
+      'if [ -d "$target" ] && find "$target" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then target_has_files=true; fi',
+      'if [ "$target_has_files" = false ] && [ -d "$legacy" ] && find "$legacy" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then rm -rf -- "$target"; mv "$legacy" "$target"; else mkdir -p "$target"; fi',
+      'cd "$target"',
+      "pwd -P",
+    ].join("; "),
+    `Prepare ${REMOTE_WORKSPACE_DISPLAY}`,
+  );
+  const remoteRoot = response.stdout.trim();
+  if (!path.posix.isAbsolute(remoteRoot) || remoteRoot === "/") {
+    throw new Error(
+      `Celesto returned an invalid workspace path for ${REMOTE_WORKSPACE_DISPLAY}.`,
+    );
+  }
+  return path.posix.resolve(remoteRoot);
 }
 
 export async function readRemoteFile(
@@ -197,8 +228,9 @@ function imageMimeType(filePath: string): string | null {
 export function createCelestoReadOperations(
   computer: RemoteComputer,
   localRoot: string,
+  remoteRoot: string,
 ): ReadOperations {
-  const remote = (input: string) => toRemotePath(input, localRoot);
+  const remote = (input: string) => toRemotePath(input, localRoot, remoteRoot);
   return {
     readFile: (input) => readRemoteFile(computer, remote(input)),
     access: async (input) => {
@@ -216,8 +248,9 @@ export function createCelestoReadOperations(
 export function createCelestoWriteOperations(
   computer: RemoteComputer,
   localRoot: string,
+  remoteRoot: string,
 ): WriteOperations {
-  const remote = (input: string) => toRemotePath(input, localRoot);
+  const remote = (input: string) => toRemotePath(input, localRoot, remoteRoot);
   return {
     writeFile: (input, content) =>
       writeRemoteFile(computer, remote(input), content),
@@ -235,10 +268,11 @@ export function createCelestoWriteOperations(
 export function createCelestoEditOperations(
   computer: RemoteComputer,
   localRoot: string,
+  remoteRoot: string,
 ): EditOperations {
-  const read = createCelestoReadOperations(computer, localRoot);
-  const write = createCelestoWriteOperations(computer, localRoot);
-  const remote = (input: string) => toRemotePath(input, localRoot);
+  const read = createCelestoReadOperations(computer, localRoot, remoteRoot);
+  const write = createCelestoWriteOperations(computer, localRoot, remoteRoot);
+  const remote = (input: string) => toRemotePath(input, localRoot, remoteRoot);
   return {
     readFile: read.readFile,
     writeFile: write.writeFile,
@@ -282,10 +316,11 @@ async function terminateRemoteCommand(
 export function createCelestoBashOperations(
   computer: RemoteComputer,
   localRoot: string,
+  remoteRoot: string,
 ): BashOperations {
   return {
     exec: async (command, cwd, { onData, signal, timeout }) => {
-      const remoteCwd = toRemotePath(cwd, localRoot);
+      const remoteCwd = toRemotePath(cwd, localRoot, remoteRoot);
       const timeoutSeconds =
         timeout === undefined ? undefined : Math.max(1, Math.min(300, timeout));
       const token = randomUUID();

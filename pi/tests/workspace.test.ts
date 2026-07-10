@@ -35,6 +35,8 @@ async function temporaryDirectory(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "celesto-workspace-test-"));
 }
 
+const REMOTE_ROOT = "/home/celesto/workspace";
+
 const file = (sha256: string): WorkspaceFile => ({
   sha256,
   size: 1,
@@ -94,9 +96,13 @@ test("uploadInitialWorkspace supports an empty project", async () => {
   const root = await temporaryDirectory();
   const computer = new SuccessfulComputer();
   try {
-    const result = await uploadInitialWorkspace(computer, root);
+    const result = await uploadInitialWorkspace(computer, root, REMOTE_ROOT);
     assert.deepEqual(result.revision.files, {});
-    assert(computer.commands.some((command) => command.includes("mv '/tmp/celesto-workspace-")));
+    assert(
+      computer.commands.some((command) =>
+        command.includes(`mv '${REMOTE_ROOT}.celesto-staging-`),
+      ),
+    );
     assert(!computer.commands.some((command) => command.includes("tar -xzf")));
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -121,7 +127,7 @@ test("downloaded modes do not create false sync changes", async () => {
     yield { type: "exit", exitCode: 0 };
   };
 
-  const snapshot = await downloadRemoteWorkspace(computer);
+  const snapshot = await downloadRemoteWorkspace(computer, REMOTE_ROOT);
   try {
     assert.equal(
       (await stat(path.join(snapshot.root, "run.sh"))).mode & 0o777,

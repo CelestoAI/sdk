@@ -16,7 +16,8 @@ import {
   createCelestoEditOperations,
   createCelestoReadOperations,
   createCelestoWriteOperations,
-  REMOTE_WORKSPACE,
+  prepareRemoteWorkspace,
+  REMOTE_WORKSPACE_DISPLAY,
 } from "./operations.js";
 import {
   createLocalBaseline,
@@ -42,6 +43,7 @@ interface CelestoSessionState {
 
 interface RuntimeState extends CelestoSessionState {
   computer: Computer;
+  remoteWorkspace: string;
 }
 
 function isPersistedState(value: unknown): value is CelestoSessionState {
@@ -131,7 +133,11 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
   let syncing: Promise<SyncResult> | undefined;
 
   const persist = (state: RuntimeState): void => {
-    const { computer: _computer, ...saved } = state;
+    const {
+      computer: _computer,
+      remoteWorkspace: _remoteWorkspace,
+      ...saved
+    } = state;
     pi.appendEntry<CelestoSessionState>(STATE_ENTRY, saved);
   };
 
@@ -145,7 +151,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
       "celesto",
       ctx.ui.theme.fg(
         "accent",
-        `Celesto: ${runtime.computerName}:${REMOTE_WORKSPACE}${suffix}`,
+        `Celesto: ${runtime.computerName}:${REMOTE_WORKSPACE_DISPLAY}${suffix}`,
       ),
     );
   };
@@ -206,6 +212,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     }
 
     await ensureComputerRunning(computer);
+    const remoteWorkspace = await prepareRemoteWorkspace(computer);
     const next: RuntimeState = {
       version: STATE_VERSION,
       computerId: computer.id,
@@ -215,19 +222,24 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
       localRoot: ctx.cwd,
       revision,
       computer,
+      remoteWorkspace,
     };
     runtime = next;
     persist(next);
     updateStatus(ctx, "preparing");
 
-    if (created || !(await remoteWorkspaceHasFiles(computer))) {
-      const uploaded = await uploadInitialWorkspace(computer, ctx.cwd);
+    if (created || !(await remoteWorkspaceHasFiles(computer, remoteWorkspace))) {
+      const uploaded = await uploadInitialWorkspace(
+        computer,
+        ctx.cwd,
+        remoteWorkspace,
+      );
       next.revision = uploaded.revision;
       persist(next);
       const skipped =
         uploaded.scan.skippedLargeFiles + uploaded.scan.skippedSymlinks;
       ctx.ui.notify(
-        `Celesto computer "${computer.name}" is ready at ${REMOTE_WORKSPACE}.${
+        `Celesto computer "${computer.name}" is ready at ${REMOTE_WORKSPACE_DISPLAY}.${
           skipped > 0 ? ` Skipped ${skipped} unsafe or oversized files.` : ""
         }`,
         "info",
@@ -241,7 +253,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
       );
     } else if (event.reason !== "reload") {
       ctx.ui.notify(
-        `Reconnected to Celesto computer "${computer.name}" at ${REMOTE_WORKSPACE}.`,
+        `Reconnected to Celesto computer "${computer.name}" at ${REMOTE_WORKSPACE_DISPLAY}.`,
         "info",
       );
     }
@@ -279,6 +291,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
       const result = await syncWorkspace(
         state.computer,
         state.localRoot,
+        state.remoteWorkspace,
         state.revision,
       );
       if (result.conflicts.length === 0) {
@@ -366,7 +379,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
             [
               `Computer: ${state.computerName} (${state.computerId})`,
               `Status: ${state.computer.status}`,
-              `Workspace: ${REMOTE_WORKSPACE}`,
+              `Workspace: ${REMOTE_WORKSPACE_DISPLAY} (${state.remoteWorkspace})`,
               `Cleanup: ${state.owned ? (state.keep ? "keep" : "delete after final sync") : "caller-owned; never delete"}`,
               `Revision: ${state.revision?.id ?? "not synchronized"}`,
             ].join("\n"),
@@ -430,8 +443,12 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
         return createReadTool(ctx.cwd).execute(id, params, signal, onUpdate);
       }
       const state = await ensureRuntime(ctx);
-      return createReadTool(REMOTE_WORKSPACE, {
-        operations: createCelestoReadOperations(state.computer, state.localRoot),
+      return createReadTool(state.remoteWorkspace, {
+        operations: createCelestoReadOperations(
+          state.computer,
+          state.localRoot,
+          state.remoteWorkspace,
+        ),
       }).execute(id, params, signal, onUpdate);
     },
   });
@@ -443,8 +460,12 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
         return createWriteTool(ctx.cwd).execute(id, params, signal, onUpdate);
       }
       const state = await ensureRuntime(ctx);
-      return createWriteTool(REMOTE_WORKSPACE, {
-        operations: createCelestoWriteOperations(state.computer, state.localRoot),
+      return createWriteTool(state.remoteWorkspace, {
+        operations: createCelestoWriteOperations(
+          state.computer,
+          state.localRoot,
+          state.remoteWorkspace,
+        ),
       }).execute(id, params, signal, onUpdate);
     },
   });
@@ -456,8 +477,12 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
         return createEditTool(ctx.cwd).execute(id, params, signal, onUpdate);
       }
       const state = await ensureRuntime(ctx);
-      return createEditTool(REMOTE_WORKSPACE, {
-        operations: createCelestoEditOperations(state.computer, state.localRoot),
+      return createEditTool(state.remoteWorkspace, {
+        operations: createCelestoEditOperations(
+          state.computer,
+          state.localRoot,
+          state.remoteWorkspace,
+        ),
       }).execute(id, params, signal, onUpdate);
     },
   });
@@ -469,8 +494,12 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
         return createBashTool(ctx.cwd).execute(id, params, signal, onUpdate);
       }
       const state = await ensureRuntime(ctx);
-      return createBashTool(REMOTE_WORKSPACE, {
-        operations: createCelestoBashOperations(state.computer, state.localRoot),
+      return createBashTool(state.remoteWorkspace, {
+        operations: createCelestoBashOperations(
+          state.computer,
+          state.localRoot,
+          state.remoteWorkspace,
+        ),
       }).execute(id, params, signal, onUpdate);
     },
   });
@@ -479,14 +508,18 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     if (!modeEnabled) return undefined;
     const state = await ensureRuntime(ctx);
     return {
-      operations: createCelestoBashOperations(state.computer, state.localRoot),
+      operations: createCelestoBashOperations(
+        state.computer,
+        state.localRoot,
+        state.remoteWorkspace,
+      ),
     };
   });
 
   pi.on("before_agent_start", async (event) => {
     if (!runtime) return undefined;
     const currentDirectory = `Current working directory: ${runtime.localRoot}`;
-    const remoteDirectory = `Current working directory: ${REMOTE_WORKSPACE} (Celesto computer: ${runtime.computerName})`;
+    const remoteDirectory = `Current working directory: ${runtime.remoteWorkspace} (${REMOTE_WORKSPACE_DISPLAY} on Celesto computer: ${runtime.computerName})`;
     return {
       systemPrompt: event.systemPrompt.includes(currentDirectory)
         ? event.systemPrompt.replace(currentDirectory, remoteDirectory)

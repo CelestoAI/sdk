@@ -40,7 +40,7 @@ From the project you want to work on, start Pi:
 pi --celesto
 ```
 
-The extension creates a Celesto computer, copies the project to `/workspace`, and runs Pi's `read`, `write`, `edit`, and `bash` tools there.
+The extension creates a Celesto computer, copies the project to `$HOME/workspace`, and runs Pi's `read`, `write`, `edit`, and `bash` tools there.
 
 ## Copy changes back
 
@@ -78,7 +78,7 @@ Get a computer name from `celesto computer create` or `celesto computer list`, t
 pi --celesto --celesto-computer curie
 ```
 
-The extension never deletes a computer selected by the caller. If `/workspace` already contains files, those files remain authoritative until you run `/celesto sync`.
+The extension never deletes a computer selected by the caller. If `$HOME/workspace` already contains files, those files remain authoritative until you run `/celesto sync`. A non-empty legacy `/workspace` is moved into `$HOME/workspace` automatically when the home workspace is empty.
 
 ## Files that are not copied
 
