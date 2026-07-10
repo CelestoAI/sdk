@@ -164,6 +164,26 @@ def test_status_reports_missing_saved_key(monkeypatch):
     assert "No saved API key was found. Run celesto auth login." in result.output
 
 
+def test_token_returns_saved_key_for_local_integrations(monkeypatch):
+    runner = CliRunner()
+    monkeypatch.setattr(auth, "load_api_key", lambda base_url=None: "stored-key")
+
+    result = runner.invoke(auth.app, ["token"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "stored-key"
+
+
+def test_token_reports_missing_saved_key(monkeypatch):
+    runner = CliRunner()
+    monkeypatch.setattr(auth, "load_api_key", lambda base_url=None: None)
+
+    result = runner.invoke(auth.app, ["token"])
+
+    assert result.exit_code == 1
+    assert "No saved API key was found. Run celesto auth login." in result.output
+
+
 def test_logout_removes_saved_key(monkeypatch):
     runner = CliRunner()
     deleted = []

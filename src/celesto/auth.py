@@ -286,6 +286,21 @@ def status(base_url: BaseUrlOption = DEFAULT_BASE_URL):
     console.print("No saved API key was found. Run celesto auth login.")
 
 
+@app.command("token", hidden=True)
+def token(base_url: BaseUrlOption = DEFAULT_BASE_URL):
+    """Return a saved API key to trusted local integrations."""
+    resolved_base_url = _resolve_base_url(base_url)
+    api_key = load_api_key(resolved_base_url)
+    if not api_key:
+        typer.echo(
+            "No saved API key was found. Run celesto auth login.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    typer.echo(api_key)
+
+
 @app.command("logout")
 def logout(base_url: BaseUrlOption = DEFAULT_BASE_URL):
     """Remove your saved Celesto API key."""
