@@ -2,6 +2,19 @@ name: Publish Packages
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_python:
+        description: Publish the Python SDK
+        type: boolean
+        default: true
+      publish_typescript:
+        description: Publish the TypeScript SDK
+        type: boolean
+        default: true
+      publish_pi:
+        description: Publish the Pi extension
+        type: boolean
+        default: true
   push:
     tags:
       - "v*.*.*"  # Trigger on version tags like v1.2.3
@@ -12,6 +25,7 @@ permissions:
 
 jobs:
   publish-python:
+    if: github.event_name != 'workflow_dispatch' || inputs.publish_python
     runs-on: ubuntu-latest
 
     steps:
@@ -36,6 +50,7 @@ jobs:
           skip-existing: true
 
   publish-node:
+    if: github.event_name != 'workflow_dispatch' || inputs.publish_typescript
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -72,6 +87,47 @@ jobs:
         id: npm-version
         run: |
           if npm view "@celestoai/sdk@$(node -p "require('./package.json').version")" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        if: steps.npm-version.outputs.exists != 'true'
+        run: npm publish --access public
+
+  publish-pi:
+    if: github.event_name != 'workflow_dispatch' || inputs.publish_pi
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pi
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+          cache-dependency-path: pi/package-lock.json
+
+      - name: Update npm
+        run: npm install -g npm@^11.5.1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run checks
+        run: npm run check
+
+      - name: Check published npm version
+        id: npm-version
+        run: |
+          if npm view "@celestoai/pi@$(node -p "require('./package.json').version")" version >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
