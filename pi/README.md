@@ -5,6 +5,8 @@ conversation history local. A Celesto computer is an isolated remote computer
 that holds your project and runs the tools. Model credentials are the secrets
 Pi uses to access an AI model. They stay on your machine.
 
+Read the [complete Pi cloud setup guide](https://docs.celesto.ai/celesto-sdk/guides/pi-coding-agent) for synchronization, security, lifecycle, and troubleshooting details.
+
 ## Quickstart
 
 Before starting, install [Pi](https://github.com/earendil-works/pi) and
