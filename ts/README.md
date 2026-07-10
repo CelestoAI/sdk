@@ -28,11 +28,20 @@ files or folders your app can use.
 npm install @celestoai/sdk
 ```
 
-Set your API key before running SDK examples:
+Sign in once with the Celesto CLI:
 
 ```bash
-export CELESTO_API_KEY="your-api-key"
+pip install celesto
+celesto auth login
 ```
+
+The `Computer` API checks an explicitly passed `token` or `apiKey` first, then `CELESTO_API_KEY` in the shell, the current project's `.env`, and credentials saved by `celesto auth login`. You can use a local `.env` instead of the CLI:
+
+```bash .env
+CELESTO_API_KEY="your-api-key"
+```
+
+Add `.env` to `.gitignore`.
 
 ## Quickstart
 
@@ -265,8 +274,7 @@ Full Gatekeeper docs: https://docs.celesto.ai/celesto-sdk/gatekeeper
 | `headers` | Extra headers to send with every request |
 
 Pass these options as the second argument to `Computer.create()` or
-`Computer.get()`. Gatekeeper clients accept the same options in their
-constructor.
+`Computer.get()`. An explicit `token` or `apiKey` takes precedence over local credential discovery. Gatekeeper clients accept the same options in their constructor and require an explicit token.
 
 JWT is a signed login token. Most users should use a Celesto API key.
 

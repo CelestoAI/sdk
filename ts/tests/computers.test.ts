@@ -52,6 +52,8 @@ const makeConfig = (fetchMock: typeof fetch): ClientConfig => ({
 describe("ComputersClient", () => {
   it("top-level package exports Computer API but not the old Celesto client", () => {
     assert.equal(sdk.Computer, Computer);
+    assert.equal(typeof sdk.resolveCelestoApiKey, "function");
+    assert.equal(typeof sdk.resolveClientConfig, "function");
     assert.equal("Celesto" in sdk, false);
   });
 
@@ -277,6 +279,27 @@ describe("ComputersClient", () => {
     assert.equal(templates[0]!.id, "scratch");
     assert.equal(calls[0]!.url, "https://api.example.test/v1/computers?status=running&template_id=scratch");
     assert.equal(calls[1]!.url, "https://api.example.test/v1/computers/templates");
+  });
+
+  it("Computer static methods automatically resolve local credentials", async () => {
+    const { fetch, calls } = makeFetchMock(() => ({
+      status: 200,
+      body: { computers: [], count: 0 },
+    }));
+    const previousApiKey = process.env.CELESTO_API_KEY;
+    process.env.CELESTO_API_KEY = "resolved-token";
+
+    try {
+      await Computer.list({}, { baseUrl: "https://api.example.test", fetch });
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.CELESTO_API_KEY;
+      } else {
+        process.env.CELESTO_API_KEY = previousApiKey;
+      }
+    }
+
+    assert.equal(calls[0]!.headers["authorization"], "Bearer resolved-token");
   });
 
   it("get() resolves name to ID via /v1/computers/{name}", async () => {
