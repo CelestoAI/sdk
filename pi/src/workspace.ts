@@ -19,7 +19,6 @@ import * as tar from "tar";
 
 import {
   execChecked,
-  REMOTE_WORKSPACE,
   removeRemotePath,
   shellQuote,
   type RemoteComputer,
@@ -251,6 +250,7 @@ async function uploadEncodedFile(
 export async function uploadInitialWorkspace(
   computer: RemoteComputer,
   localRoot: string,
+  remoteRoot: string,
 ): Promise<{ revision: WorkspaceRevision; scan: WorkspaceScan }> {
   const ignore = await createWorkspaceIgnore(localRoot);
   const scan = await scanWorkspace(localRoot, { ignore });
@@ -259,8 +259,8 @@ export async function uploadInitialWorkspace(
   const temporaryId = randomUUID();
   const encodedRemote = `/tmp/celesto-${temporaryId}.b64`;
   const archiveRemote = `/tmp/celesto-${temporaryId}.tgz`;
-  const staging = `/tmp/celesto-workspace-${temporaryId}`;
-  const backup = `/tmp/celesto-workspace-backup-${temporaryId}`;
+  const staging = `${remoteRoot}.celesto-staging-${temporaryId}`;
+  const backup = `${remoteRoot}.celesto-backup-${temporaryId}`;
 
   try {
     if (archivePath) {
@@ -279,13 +279,13 @@ export async function uploadInitialWorkspace(
       `rm -rf -- ${shellQuote(staging)} ${shellQuote(backup)}`,
       `mkdir -p ${shellQuote(staging)}`,
       ...archiveCommands,
-      `if [ -e ${shellQuote(REMOTE_WORKSPACE)} ]; then mv ${shellQuote(REMOTE_WORKSPACE)} ${shellQuote(backup)}; fi`,
-      `if mv ${shellQuote(staging)} ${shellQuote(REMOTE_WORKSPACE)}; then rm -rf -- ${shellQuote(backup)}; else if [ -e ${shellQuote(backup)} ]; then mv ${shellQuote(backup)} ${shellQuote(REMOTE_WORKSPACE)}; fi; exit 1; fi`,
+      `if [ -e ${shellQuote(remoteRoot)} ]; then mv ${shellQuote(remoteRoot)} ${shellQuote(backup)}; fi`,
+      `if mv ${shellQuote(staging)} ${shellQuote(remoteRoot)}; then rm -rf -- ${shellQuote(backup)}; else if [ -e ${shellQuote(backup)} ]; then mv ${shellQuote(backup)} ${shellQuote(remoteRoot)}; fi; exit 1; fi`,
     ].join("; ");
-    await execChecked(computer, command, "Prepare /workspace", { timeout: 300 });
+    await execChecked(computer, command, `Prepare ${remoteRoot}`, { timeout: 300 });
 
     const revision = createRevision(scan.manifest);
-    await writeRemoteRevision(computer, revision);
+    await writeRemoteRevision(computer, remoteRoot, revision);
     return { revision, scan };
   } finally {
     if (archivePath) {
@@ -301,9 +301,10 @@ export async function uploadInitialWorkspace(
 
 export async function remoteWorkspaceHasFiles(
   computer: RemoteComputer,
+  remoteRoot: string,
 ): Promise<boolean> {
   const result = await computer.run(
-    `test -d ${shellQuote(REMOTE_WORKSPACE)} && find ${shellQuote(REMOTE_WORKSPACE)} -mindepth 1 -maxdepth 1 -print -quit | grep -q .`,
+    `test -d ${shellQuote(remoteRoot)} && find ${shellQuote(remoteRoot)} -mindepth 1 -maxdepth 1 -print -quit | grep -q .`,
   );
   return result.exitCode === 0;
 }
@@ -311,6 +312,7 @@ export async function remoteWorkspaceHasFiles(
 async function streamStdout(
   computer: RemoteComputer,
   command: string,
+  action: string,
 ): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let stderr = "";
@@ -323,8 +325,8 @@ async function streamStdout(
   if (exitCode !== 0) {
     throw new Error(
       stderr.trim()
-        ? `Download /workspace failed: ${stderr.trim()}`
-        : `Download /workspace failed with exit code ${exitCode ?? "unknown"}.`,
+        ? `${action} failed: ${stderr.trim()}`
+        : `${action} failed with exit code ${exitCode ?? "unknown"}.`,
     );
   }
   return Buffer.concat(chunks);
@@ -337,10 +339,12 @@ function safeArchivePath(entryPath: string): boolean {
 
 export async function downloadRemoteWorkspace(
   computer: RemoteComputer,
+  remoteRoot: string,
 ): Promise<RemoteSnapshot> {
   const encoded = await streamStdout(
     computer,
-    `tar -czf - -C ${shellQuote(REMOTE_WORKSPACE)} . | base64 | tr -d '\\n'`,
+    `tar -czf - -C ${shellQuote(remoteRoot)} . | base64 | tr -d '\\n'`,
+    `Download ${remoteRoot}`,
   );
   const directory = await mkdtemp(path.join(os.tmpdir(), "celesto-download-"));
   const archivePath = path.join(directory, "workspace.tgz");
@@ -444,10 +448,11 @@ async function applyRemoteToLocal(
 async function pushLocalToRemote(
   computer: RemoteComputer,
   localRoot: string,
+  remoteRoot: string,
   relativePath: string,
   localFile: WorkspaceFile | undefined,
 ): Promise<void> {
-  const remotePath = path.posix.join(REMOTE_WORKSPACE, relativePath);
+  const remotePath = path.posix.join(remoteRoot, relativePath);
   if (!localFile) {
     await removeRemotePath(computer, remotePath);
     return;
@@ -483,11 +488,12 @@ async function preserveConflict(
 
 export async function writeRemoteRevision(
   computer: RemoteComputer,
+  remoteRoot: string,
   revision: WorkspaceRevision,
 ): Promise<void> {
   await writeRemoteFile(
     computer,
-    path.posix.join(REMOTE_WORKSPACE, REVISION_FILE),
+    path.posix.join(remoteRoot, REVISION_FILE),
     `${JSON.stringify(revision)}\n`,
   );
 }
@@ -495,10 +501,11 @@ export async function writeRemoteRevision(
 export async function syncWorkspace(
   computer: RemoteComputer,
   localRoot: string,
+  remoteRoot: string,
   baseRevision: WorkspaceRevision,
 ): Promise<SyncResult> {
   const ignore = await createWorkspaceIgnore(localRoot);
-  const snapshot = await downloadRemoteWorkspace(computer);
+  const snapshot = await downloadRemoteWorkspace(computer, remoteRoot);
 
   try {
     const [localScan, remoteScan] = await Promise.all([
@@ -523,6 +530,7 @@ export async function syncWorkspace(
       await pushLocalToRemote(
         computer,
         localRoot,
+        remoteRoot,
         relativePath,
         localScan.manifest[relativePath],
       );
@@ -548,7 +556,7 @@ export async function syncWorkspace(
 
     const converged = await scanWorkspace(localRoot, { ignore });
     const revision = createRevision(converged.manifest);
-    await writeRemoteRevision(computer, revision);
+    await writeRemoteRevision(computer, remoteRoot, revision);
     return {
       revision,
       conflicts: [],

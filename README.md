@@ -275,8 +275,8 @@ From the project you want to work on, start Pi with Celesto:
 pi --celesto
 ```
 
-Pi copies the project to `/workspace` and runs its read, write, edit, and shell
-tools there. Copy the resulting changes back to your local project from inside
+Pi copies the project to `$HOME/workspace` and runs its read, write, edit, and
+shell tools there. Copy the resulting changes back to your local project from inside
 Pi:
 
 ```text
