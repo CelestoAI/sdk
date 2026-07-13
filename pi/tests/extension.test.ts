@@ -11,7 +11,18 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 
-import celestoPiExtension from "../src/index.js";
+import celestoPiExtension, { assertSafeLocalRoot } from "../src/index.js";
+
+test("push refuses filesystem and home directory roots", () => {
+  assert.throws(
+    () => assertSafeLocalRoot(path.parse(process.cwd()).root),
+    /Refusing to copy/,
+  );
+  assert.throws(() => assertSafeLocalRoot(os.homedir()), /Refusing to copy/);
+  assert.doesNotThrow(() =>
+    assertSafeLocalRoot(path.join(os.tmpdir(), "celesto-project")),
+  );
+});
 
 test("local tools use the session cwd without --celesto", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "celesto-extension-test-"));
