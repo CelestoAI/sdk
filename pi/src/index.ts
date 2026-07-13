@@ -142,6 +142,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
   let runtime: RuntimeState | undefined;
   let starting: Promise<RuntimeState> | undefined;
   let syncing: Promise<SyncResult> | undefined;
+  let workspaceOperation: Promise<unknown> | undefined;
 
   const persist = (state: RuntimeState): void => {
     const {
@@ -291,9 +292,22 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     }
   }
 
+  async function runWorkspaceOperation<T>(operation: () => Promise<T>): Promise<T> {
+    if (workspaceOperation) {
+      throw new Error("Another Celesto workspace transfer is already running.");
+    }
+    const current = operation();
+    workspaceOperation = current;
+    try {
+      return await current;
+    } finally {
+      if (workspaceOperation === current) workspaceOperation = undefined;
+    }
+  }
+
   async function syncOnce(ctx: ExtensionContext): Promise<SyncResult> {
     if (!syncing) {
-      syncing = performSync(ctx).finally(() => {
+      syncing = runWorkspaceOperation(() => performSync(ctx)).finally(() => {
         syncing = undefined;
       });
     }
@@ -324,6 +338,10 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     if (!state || event.reason === "reload") return;
 
     if (state.owned && !state.keep) {
+      ctx.ui.notify(
+        `Celesto computer "${state.computerName}" will be deleted. Any unsynced changes will be lost.`,
+        "warning",
+      );
       try {
         updateStatus(ctx, "deleting");
         await state.computer.delete();
@@ -364,28 +382,32 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
       if (action === "push") {
         try {
           const state = await ensureRuntime(ctx);
+          if (state.revision) {
+            throw new Error(
+              "This workspace already has a shared revision. Run /celesto sync instead.",
+            );
+          }
           assertSafeLocalRoot(state.localRoot);
-          updateStatus(ctx, "uploading");
-          const uploaded = await uploadInitialWorkspace(
-            state.computer,
-            state.localRoot,
-            state.remoteWorkspace,
-          );
-          state.revision = uploaded.revision;
-          persist(state);
-          const skipped =
-            uploaded.scan.skippedLargeFiles + uploaded.scan.skippedSymlinks;
-          ctx.ui.notify(
-            `Copied this project to "${state.computerName}".${
-              skipped > 0 ? ` Skipped ${skipped} unsafe or oversized files.` : ""
-            }`,
-            "info",
-          );
+          await runWorkspaceOperation(async () => {
+            updateStatus(ctx, "uploading");
+            const uploaded = await uploadInitialWorkspace(
+              state.computer,
+              state.localRoot,
+              state.remoteWorkspace,
+            );
+            state.revision = uploaded.revision;
+            persist(state);
+            const skipped =
+              uploaded.scan.skippedLargeFiles + uploaded.scan.skippedSymlinks;
+            ctx.ui.notify(
+              `Copied this project to "${state.computerName}".${
+                skipped > 0 ? ` Skipped ${skipped} unsafe or oversized files.` : ""
+              }`,
+              "info",
+            );
+          });
         } catch (error) {
-          ctx.ui.notify(
-            `Celesto push failed: ${errorMessage(error)} Run /celesto push to retry; the computer was kept.`,
-            "error",
-          );
+          ctx.ui.notify(`Celesto push failed: ${errorMessage(error)}`, "error");
         } finally {
           updateStatus(ctx);
         }

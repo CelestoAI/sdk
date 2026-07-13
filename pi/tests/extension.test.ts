@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -10,8 +10,41 @@ import type {
   SessionStartEvent,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import {
+  Computer,
+  type ComputerExecResponse,
+  type ComputerExecStreamEvent,
+  type ExecParams,
+} from "@celestoai/sdk";
 
 import celestoPiExtension, { assertSafeLocalRoot } from "../src/index.js";
+
+const REMOTE_ROOT = "/home/celesto/workspace";
+
+class FakeComputer {
+  readonly id = "computer-1";
+  readonly name = "archimedes";
+  readonly status = "running";
+  readonly commands: string[] = [];
+
+  async run(command: string): Promise<ComputerExecResponse> {
+    this.commands.push(command);
+    return {
+      exitCode: 0,
+      stdout: command.includes('home=$(cd "${HOME:?HOME is not set}"')
+        ? `${REMOTE_ROOT}\n`
+        : "",
+      stderr: "",
+    };
+  }
+
+  async *runStream(
+    _command: string,
+    _params?: ExecParams,
+  ): AsyncGenerator<ComputerExecStreamEvent> {
+    yield { type: "exit", exitCode: 0 };
+  }
+}
 
 test("push refuses filesystem and home directory roots", () => {
   assert.throws(
@@ -22,6 +55,107 @@ test("push refuses filesystem and home directory roots", () => {
   assert.doesNotThrow(() =>
     assertSafeLocalRoot(path.join(os.tmpdir(), "celesto-project")),
   );
+});
+
+test("/celesto push uploads once, persists its revision, and reports skipped files", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "celesto-push-test-"));
+  const originalGet = Computer.get;
+  try {
+    await writeFile(path.join(root, "hello.txt"), "hello\n");
+    await symlink("hello.txt", path.join(root, "hello-link.txt"));
+
+    const computer = new FakeComputer();
+    Computer.get = async () => computer as unknown as Computer;
+
+    const flags = new Map<string, boolean | string | undefined>();
+    const commands = new Map<
+      string,
+      (args: string, ctx: ExtensionContext) => Promise<void>
+    >();
+    const persisted: unknown[] = [];
+    const notifications: string[] = [];
+    const handlers = new Map<
+      string,
+      Array<(event: unknown, ctx: ExtensionContext) => unknown>
+    >();
+    const api = {
+      registerFlag(name: string, options: { default?: boolean | string }) {
+        flags.set(name, options.default);
+      },
+      getFlag(name: string) {
+        return flags.get(name);
+      },
+      registerTool() {},
+      registerCommand(
+        name: string,
+        options: {
+          handler: (args: string, ctx: ExtensionContext) => Promise<void>;
+        },
+      ) {
+        commands.set(name, options.handler);
+      },
+      on(
+        event: string,
+        handler: (event: unknown, ctx: ExtensionContext) => unknown,
+      ) {
+        const existing = handlers.get(event) ?? [];
+        existing.push(handler);
+        handlers.set(event, existing);
+      },
+      appendEntry(_customType: string, data: unknown) {
+        persisted.push(data);
+      },
+    } as unknown as ExtensionAPI;
+
+    celestoPiExtension(api);
+    flags.set("celesto-computer", computer.name);
+    const context = {
+      cwd: root,
+      sessionManager: { getBranch: () => [] },
+      ui: {
+        theme: { fg: (_color: string, value: string) => value },
+        setStatus() {},
+        notify(message: string) {
+          notifications.push(message);
+        },
+      },
+    } as unknown as ExtensionContext;
+    for (const handler of handlers.get("session_start") ?? []) {
+      await handler(
+        { type: "session_start", reason: "startup" } satisfies SessionStartEvent,
+        context,
+      );
+    }
+
+    const push = commands.get("celesto");
+    assert(push);
+    await push("push", context);
+
+    assert(
+      computer.commands.some((command) =>
+        command.includes(`mv '${REMOTE_ROOT}.celesto-staging-`),
+      ),
+    );
+    const saved = persisted.at(-1) as { revision?: { files?: object } };
+    assert(saved.revision?.files && "hello.txt" in saved.revision.files);
+    assert(
+      notifications.some((message) =>
+        message.includes('Copied this project to "archimedes". Skipped 1'),
+      ),
+    );
+
+    const commandCount = computer.commands.length;
+    await push("push", context);
+    assert.equal(computer.commands.length, commandCount);
+    assert(
+      notifications.some((message) =>
+        message.includes("already has a shared revision"),
+      ),
+    );
+  } finally {
+    Computer.get = originalGet;
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("local tools use the session cwd without --celesto", async () => {
