@@ -1,3 +1,6 @@
+import os from "node:os";
+import path from "node:path";
+
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -20,8 +23,6 @@ import {
   REMOTE_WORKSPACE_DISPLAY,
 } from "./operations.js";
 import {
-  createLocalBaseline,
-  remoteWorkspaceHasFiles,
   syncWorkspace,
   type SyncResult,
   uploadInitialWorkspace,
@@ -82,6 +83,16 @@ function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+export function assertSafeLocalRoot(localRoot: string): void {
+  const resolved = path.resolve(localRoot);
+  const filesystemRoot = path.parse(resolved).root;
+  if (resolved !== filesystemRoot && resolved !== path.resolve(os.homedir())) return;
+
+  throw new Error(
+    `Refusing to copy ${JSON.stringify(resolved)}. Exit Pi, change to a project directory, restart with pi --celesto, then run /celesto push.`,
+  );
+}
+
 async function ensureComputerRunning(computer: Computer): Promise<void> {
   const terminalStatuses: ComputerStatus[] = ["deleted", "deleting", "error"];
   if (terminalStatuses.includes(computer.status)) {
@@ -131,6 +142,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
   let runtime: RuntimeState | undefined;
   let starting: Promise<RuntimeState> | undefined;
   let syncing: Promise<SyncResult> | undefined;
+  let workspaceOperation: Promise<unknown> | undefined;
 
   const persist = (state: RuntimeState): void => {
     const {
@@ -171,7 +183,6 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     let owned = false;
     let keep = false;
     let revision: WorkspaceRevision | undefined;
-    let created = false;
 
     if (selected) {
       computer = await Computer.get(selected);
@@ -186,20 +197,21 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
       if (forkNeedsOwnComputer) {
         computer = await Computer.create();
         owned = true;
-        created = true;
       } else {
+        let restored = true;
         try {
           computer = await Computer.get(saved.computerId);
         } catch {
           computer = await Computer.create();
           owned = true;
-          created = true;
+          restored = false;
         }
         if (["deleted", "deleting", "error"].includes(computer.status)) {
           computer = await Computer.create();
           owned = true;
-          created = true;
-        } else if (!created) {
+          restored = false;
+        }
+        if (restored) {
           owned = saved.owned;
           keep = saved.keep;
           revision = saved.revision;
@@ -208,7 +220,6 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     } else {
       computer = await Computer.create();
       owned = true;
-      created = true;
     }
 
     await ensureComputerRunning(computer);
@@ -226,39 +237,14 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     };
     runtime = next;
     persist(next);
-    updateStatus(ctx, "preparing");
+    updateStatus(ctx);
 
-    if (created || !(await remoteWorkspaceHasFiles(computer, remoteWorkspace))) {
-      const uploaded = await uploadInitialWorkspace(
-        computer,
-        ctx.cwd,
-        remoteWorkspace,
-      );
-      next.revision = uploaded.revision;
-      persist(next);
-      const skipped =
-        uploaded.scan.skippedLargeFiles + uploaded.scan.skippedSymlinks;
+    if (event.reason !== "reload") {
       ctx.ui.notify(
-        `Celesto computer "${computer.name}" is ready at ${REMOTE_WORKSPACE_DISPLAY}.${
-          skipped > 0 ? ` Skipped ${skipped} unsafe or oversized files.` : ""
-        }`,
-        "info",
-      );
-    } else if (!next.revision) {
-      next.revision = await createLocalBaseline(ctx.cwd);
-      persist(next);
-      ctx.ui.notify(
-        `Using existing files in "${computer.name}" as the active workspace. Run /celesto sync to copy changes to this project.`,
-        "info",
-      );
-    } else if (event.reason !== "reload") {
-      ctx.ui.notify(
-        `Reconnected to Celesto computer "${computer.name}" at ${REMOTE_WORKSPACE_DISPLAY}.`,
+        `Celesto computer "${computer.name}" is ready at ${REMOTE_WORKSPACE_DISPLAY}. No local files were copied. Run /celesto push to copy this project explicitly.`,
         "info",
       );
     }
-
-    updateStatus(ctx);
     return next;
   }
 
@@ -284,7 +270,9 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
   async function performSync(ctx: ExtensionContext): Promise<SyncResult> {
     const state = await ensureRuntime(ctx);
     if (!state.revision) {
-      state.revision = await createLocalBaseline(state.localRoot);
+      throw new Error(
+        "This workspace has no shared revision. Run /celesto push before /celesto sync.",
+      );
     }
     updateStatus(ctx, "syncing");
     try {
@@ -304,9 +292,22 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     }
   }
 
+  async function runWorkspaceOperation<T>(operation: () => Promise<T>): Promise<T> {
+    if (workspaceOperation) {
+      throw new Error("Another Celesto workspace transfer is already running.");
+    }
+    const current = operation();
+    workspaceOperation = current;
+    try {
+      return await current;
+    } finally {
+      if (workspaceOperation === current) workspaceOperation = undefined;
+    }
+  }
+
   async function syncOnce(ctx: ExtensionContext): Promise<SyncResult> {
     if (!syncing) {
-      syncing = performSync(ctx).finally(() => {
+      syncing = runWorkspaceOperation(() => performSync(ctx)).finally(() => {
         syncing = undefined;
       });
     }
@@ -336,24 +337,11 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     const state = runtime;
     if (!state || event.reason === "reload") return;
 
-    let safeToDelete = false;
-    try {
-      const result = await syncOnce(ctx);
-      safeToDelete = result.conflicts.length === 0;
-      if (!safeToDelete) {
-        ctx.ui.notify(
-          `Final sync found ${result.conflicts.length} conflict(s) for "${state.computerName}". Reopen this Pi session and run /celesto sync; the computer was kept.`,
-          "warning",
-        );
-      }
-    } catch (error) {
+    if (state.owned && !state.keep) {
       ctx.ui.notify(
-        `Final sync failed for "${state.computerName}": ${errorMessage(error)} Reopen this Pi session and run /celesto sync; the computer was kept.`,
-        "error",
+        `Celesto computer "${state.computerName}" will be deleted. Any unsynced changes will be lost.`,
+        "warning",
       );
-    }
-
-    if (safeToDelete && state.owned && !state.keep) {
       try {
         updateStatus(ctx, "deleting");
         await state.computer.delete();
@@ -369,7 +357,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("celesto", {
-    description: "Manage the active Celesto computer: status, sync, or keep",
+    description: "Manage the active Celesto computer: status, push, sync, or keep",
     handler: async (args, ctx) => {
       const action = args.trim() || "status";
       if (action === "status") {
@@ -380,13 +368,48 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
               `Computer: ${state.computerName} (${state.computerId})`,
               `Status: ${state.computer.status}`,
               `Workspace: ${REMOTE_WORKSPACE_DISPLAY} (${state.remoteWorkspace})`,
-              `Cleanup: ${state.owned ? (state.keep ? "keep" : "delete after final sync") : "caller-owned; never delete"}`,
+              `Cleanup: ${state.owned ? (state.keep ? "keep" : "delete on exit without syncing") : "caller-owned; never delete"}`,
               `Revision: ${state.revision?.id ?? "not synchronized"}`,
             ].join("\n"),
             "info",
           );
         } catch (error) {
           ctx.ui.notify(errorMessage(error), "error");
+        }
+        return;
+      }
+
+      if (action === "push") {
+        try {
+          const state = await ensureRuntime(ctx);
+          if (state.revision) {
+            throw new Error(
+              "This workspace already has a shared revision. Run /celesto sync instead.",
+            );
+          }
+          assertSafeLocalRoot(state.localRoot);
+          await runWorkspaceOperation(async () => {
+            updateStatus(ctx, "uploading");
+            const uploaded = await uploadInitialWorkspace(
+              state.computer,
+              state.localRoot,
+              state.remoteWorkspace,
+            );
+            state.revision = uploaded.revision;
+            persist(state);
+            const skipped =
+              uploaded.scan.skippedLargeFiles + uploaded.scan.skippedSymlinks;
+            ctx.ui.notify(
+              `Copied this project to "${state.computerName}".${
+                skipped > 0 ? ` Skipped ${skipped} unsafe or oversized files.` : ""
+              }`,
+              "info",
+            );
+          });
+        } catch (error) {
+          ctx.ui.notify(`Celesto push failed: ${errorMessage(error)}`, "error");
+        } finally {
+          updateStatus(ctx);
         }
         return;
       }
@@ -430,7 +453,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
       }
 
       ctx.ui.notify(
-        `Unknown Celesto action "${action}". Use /celesto status, /celesto sync, or /celesto keep.`,
+        `Unknown Celesto action "${action}". Use /celesto status, /celesto push, /celesto sync, or /celesto keep.`,
         "error",
       );
     },

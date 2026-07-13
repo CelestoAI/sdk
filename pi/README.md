@@ -40,17 +40,25 @@ From the project you want to work on, start Pi:
 pi --celesto
 ```
 
-The extension creates a Celesto computer, copies the project to `$HOME/workspace`, and runs Pi's `read`, `write`, `edit`, and `bash` tools there.
+The extension creates an empty `$HOME/workspace` on a Celesto computer and runs Pi's `read`, `write`, `edit`, and `bash` tools there. It does not copy anything from your machine automatically.
 
-## Copy changes back
+## Copy a project explicitly
 
-The Celesto workspace is the active copy while Pi is running. Copy changes between it and your local project explicitly:
+From inside Pi, copy the current local project to the Celesto workspace:
+
+```text
+/celesto push
+```
+
+This explicit command replaces the remote workspace. It refuses to copy your filesystem root or home directory. Start Pi from a project directory before running it.
+
+After pushing, copy changes in either direction explicitly:
 
 ```text
 /celesto sync
 ```
 
-The sync command preserves independently changed files under `.celesto-conflicts/` instead of overwriting local work.
+The sync command preserves independently changed files under `.celesto-conflicts/` instead of overwriting local work. Pi never syncs files automatically when it exits.
 
 ## Check the computer
 
@@ -62,7 +70,7 @@ This shows the computer name, workspace, cleanup behavior, and current sync revi
 
 ## Keep the computer
 
-Computers created by the extension are deleted only after a successful final sync. Keep one for later use with:
+Computers created by the extension are deleted when Pi exits, without an automatic sync. Run `/celesto sync` first if you want local copies of remote changes. Keep a computer for later use with:
 
 ```text
 /celesto keep
@@ -78,11 +86,11 @@ Get a computer name from `celesto computer create` or `celesto computer list`, t
 pi --celesto --celesto-computer curie
 ```
 
-The extension never deletes a computer selected by the caller. If `$HOME/workspace` already contains files, those files remain authoritative until you run `/celesto sync`. A non-empty legacy `/workspace` is moved into `$HOME/workspace` automatically when the home workspace is empty.
+The extension never deletes a computer selected by the caller. Existing files in `$HOME/workspace` remain untouched unless you explicitly run `/celesto push` or `/celesto sync`. A non-empty legacy `/workspace` is moved into `$HOME/workspace` automatically when the home workspace is empty.
 
-## Files that are not copied
+## Files excluded from explicit transfers
 
-The extension reads `.gitignore` and then applies `.celestoignore` overrides. It also excludes common secrets, dependency directories, build output, files larger than 25 MB, and symbolic links. `.git` remains available so Pi can inspect branches and diffs.
+For `/celesto push` and `/celesto sync`, the extension reads `.gitignore` and then applies `.celestoignore` overrides. It also excludes common secrets, dependency directories, build output, files larger than 25 MB, and symbolic links. `.git` remains available so Pi can inspect branches and diffs.
 
 Add project-specific patterns to `.celestoignore`:
 
@@ -95,4 +103,4 @@ Model-provider credentials are never copied into the Celesto computer. `CELESTO_
 
 ## Current scope
 
-This first version uses compressed archives and base64 file transfer. It intentionally does not override Pi's `grep`, `find`, or `ls` tools yet. Native workspace transfer and automatic synchronization require future Celesto backend support.
+This first version uses compressed archives and base64 file transfer for explicit push and sync commands. It intentionally does not override Pi's `grep`, `find`, or `ls` tools yet. Native workspace transfer requires future Celesto backend support.

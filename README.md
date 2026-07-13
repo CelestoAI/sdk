@@ -275,14 +275,16 @@ From the project you want to work on, start Pi with Celesto:
 pi --celesto
 ```
 
-Pi copies the project to `$HOME/workspace` and runs its read, write, edit, and
-shell tools there. Copy the resulting changes back to your local project from inside
-Pi:
+Pi starts with an empty `$HOME/workspace` and runs its read, write, edit, and
+shell tools there. It does not copy local files automatically. To copy the current
+project explicitly, run this inside Pi:
 
 ```text
-/celesto sync
+/celesto push
 ```
 
+After pushing, use `/celesto sync` to copy changes explicitly between the remote
+workspace and your local project. Pi never syncs files automatically when it exits.
 Use `/celesto status` to see the active computer or `/celesto keep` to preserve
 an extension-created computer after Pi exits. See the [Pi extension guide](./pi/README.md)
 for reuse and file-exclusion options.
