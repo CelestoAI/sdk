@@ -1028,7 +1028,7 @@ class Computers(_BaseClient):
 
         Args:
             computer_id: Computer ID or name.
-            port: Port to publish. The MVP supports port 8000.
+            port: Application port to publish (1024-65535). Each computer supports up to four public ports.
 
         Returns:
             Published port dict with id, computer_id, port, url, status, and created_at.
@@ -1055,7 +1055,7 @@ class Computers(_BaseClient):
 
         Args:
             computer_id: Computer ID or name.
-            port: Published port to remove. The MVP supports port 8000.
+            port: Published application port to remove (1024-65535).
 
         Returns:
             Unpublished port dict.
