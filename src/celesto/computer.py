@@ -237,7 +237,10 @@ def _write_stream_event(event: dict[str, Any], *, as_json: bool = False) -> int 
 @port_app.command("publish")
 def publish_port(
     computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
-    port: Annotated[int, typer.Option("--port", "-p", help="Port to publish")] = 8000,
+    port: Annotated[
+        int,
+        typer.Option("--port", "-p", help="Application port to publish (1024-65535)"),
+    ] = 8000,
     as_json: JsonOption = False,
     api_key: ApiKeyOption = None,
 ):
@@ -290,7 +293,10 @@ def list_ports(
 @port_app.command("unpublish")
 def unpublish_port(
     computer_id: Annotated[str, typer.Argument(help="Computer ID or name")],
-    port: Annotated[int, typer.Option("--port", "-p", help="Port to unpublish")] = 8000,
+    port: Annotated[
+        int,
+        typer.Option("--port", "-p", help="Application port to unpublish (1024-65535)"),
+    ] = 8000,
     as_json: JsonOption = False,
     api_key: ApiKeyOption = None,
 ):

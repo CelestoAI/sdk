@@ -408,7 +408,7 @@ for computer in computers:
 
 ### Publish Ports
 
-Publish a port when a service inside the computer needs a public URL:
+Publish an HTTP service on an application port from 1024 through 65535. Each computer can have up to four public ports; Celesto system ports are reserved.
 
 ```python
 from celesto import Computer
