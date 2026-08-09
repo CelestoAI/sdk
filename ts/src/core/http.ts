@@ -112,7 +112,13 @@ export const request = async <T>(ctx: RequestContext, options: RequestOptions): 
 
     if (!response.ok) {
       const message = extractErrorMessage(data, response.status);
-      throw new CelestoApiError(message, response.status, data, response.headers.get("x-request-id") ?? undefined);
+      throw new CelestoApiError(
+        message,
+        response.status,
+        data,
+        response.headers.get("x-request-id") ?? undefined,
+        response.headers,
+      );
     }
 
     return data as T;
@@ -145,6 +151,7 @@ export const requestStream = async (
         response.status,
         data,
         response.headers.get("x-request-id") ?? undefined,
+        response.headers,
       );
     }
     return response;

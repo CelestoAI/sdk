@@ -5,6 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     "gatekeeper/index": "src/gatekeeper/index.ts",
     "computers/index": "src/computers/index.ts",
+    "agents/index": "src/agents/index.ts",
   },
   format: ["esm", "cjs"],
   dts: true,
