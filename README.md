@@ -17,6 +17,7 @@ Use Celesto when you want to:
 - Keep agent work separate from your laptop, server, or production system.
 - Manage a computer from start to finish: create, list, run commands, stop,
   start, and delete.
+- Run an agent for each of your own users, with a spending limit per user.
 
 This README covers the Python SDK, which is a code package, and the CLI, which
 is the `celesto` command. The JavaScript and TypeScript SDK is also available as
@@ -253,6 +254,117 @@ try {
 
 See the [JavaScript and TypeScript README](./ts/README.md) for Node.js
 requirements, Gatekeeper examples, and terminal connection details.
+
+## Run Agents for Your Users
+
+If you are building a product on top of an AI agent, every run happens for one
+of *your* users. Celesto keeps them apart: each run is recorded against the user
+it acted for, so you can see what that person's agent did and what it cost, and
+stop it from spending more than you allow.
+
+You identify each of your users with a string you already have — a database ID,
+an email, anything. Celesto stores it as you send it. There is no Celesto user
+ID to look up and no mapping table to keep.
+
+This example creates an agent, runs it for one user, prints the answer as it
+arrives, and then reads that user's spending.
+
+```python
+from celesto import ManagedAgentsClient
+
+celesto = ManagedAgentsClient()
+
+agent = celesto.agents.create(
+    name="support-bot",
+    model="gpt-5-mini",
+    instructions="Answer order questions in one short paragraph.",
+)
+
+for event in celesto.runs.stream(
+    agent["id"], input="Where is my order?", end_user_id="usr_8837"
+):
+    if event.name == "message.delta":
+        print(event.text, end="", flush=True)
+
+budget = celesto.end_users.get("usr_8837")["budget"]
+print(f"\nSpent {budget['spent_usd']} of {budget['cap_usd']}")
+```
+
+`ManagedAgentsClient` reads `CELESTO_API_KEY` the same way `Computer` does.
+
+### Wait Instead of Streaming
+
+`stream()` gives you the answer as it is written. `create()` waits and gives you
+the finished run:
+
+```python
+run = celesto.runs.create(
+    agent["id"], input="Where is my order?", end_user_id="usr_8837"
+)
+print(run["output"], run["usage"]["cost_usd"])
+```
+
+### Money Is Exact
+
+Every amount — `cost_usd`, `spent_usd`, `cap_usd` — is a `Decimal`, not a float.
+A single answer can cost a few millionths of a dollar, and floats lose those
+when you add them up. Keep the `Decimal`.
+
+### Set a Spending Limit
+
+Give one user a cap, or set the default for everyone:
+
+```python
+from decimal import Decimal
+
+celesto.end_users.update("usr_8837", budget_cap_usd=Decimal("5.00"))
+celesto.runtime.update_settings(default_end_user_budget_usd=Decimal("0.50"))
+```
+
+The cap covers a 30-day window that starts the first time that user runs
+anything. When it runs out, the next run raises `BudgetExceededError`, and a run
+already in flight stops at its next step with a `run.failed` event.
+
+### Retry Safely
+
+Pass `idempotency_key` to make a retry safe: sending the same key again returns
+the run that already happened instead of running the agent — and charging your
+user — twice.
+
+```python
+run = celesto.runs.create(
+    agent["id"],
+    input="Where is my order?",
+    end_user_id="usr_8837",
+    idempotency_key="order-status-42",
+)
+```
+
+One conversation runs one agent at a time. If a second run arrives while the
+first is still going, Celesto refuses it with `SessionBusyError`. Pass
+`max_retries=2` to wait and try again; the SDK creates an idempotency key for
+you when you do.
+
+### Keep the Conversation Going
+
+Every run belongs to a session, which is that user's transcript. Leave
+`session_id` out and Celesto starts one; pass it back to continue:
+
+```python
+run = celesto.runs.create(agent["id"], input="Hello", end_user_id="usr_8837")
+follow_up = celesto.runs.create(
+    agent["id"],
+    input="And the one before that?",
+    end_user_id="usr_8837",
+    session_id=run["session_id"],
+)
+```
+
+### Change an Agent
+
+Updating an agent saves a new version and leaves the old ones readable. Runs
+remember the version they used, so a change never rewrites what already
+happened. `celesto.agents.activate_version(agent_id, 1)` goes back.
 
 ## Run Pi in a Celesto Computer
 
@@ -550,6 +662,25 @@ from celesto.sdk.exceptions import (
 ```
 
 `CelestoRateLimitError` includes a `retry_after` value when the API sends one.
+
+Agent runs add an exception per reason a run can be refused, so you can react to
+the specific one. Each is a `ManagedAgentError`, which is a `CelestoError`.
+
+```python
+from celesto import BudgetExceededError, SessionBusyError
+
+try:
+    run = celesto.runs.create(agent_id, input="Hi", end_user_id="usr_8837")
+except BudgetExceededError:
+    prompt_the_user_to_upgrade()
+except SessionBusyError as busy:
+    retry_in(busy.retry_after)
+```
+
+The full set: `BudgetExceededError`, `SessionBusyError`,
+`IdempotencyConflictError`, `AgentArchivedError`, `ProviderNotConnectedError`,
+`SessionAgentMismatchError`, `SessionEndUserMismatchError`,
+`ModelRequiresOwnKeyError`, and `ConfigKeyNotAllowedError`.
 
 ## Develop Locally
 
