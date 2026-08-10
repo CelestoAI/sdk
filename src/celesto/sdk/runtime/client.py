@@ -15,6 +15,7 @@ Five namespaces hang off the client, named the same in every Celesto SDK:
 - ``settings`` — organization-wide defaults, such as the starting budget.
 """
 
+import random
 import time
 import uuid
 from collections.abc import Iterator, Mapping
@@ -51,6 +52,30 @@ DEFAULT_RUN_TIMEOUT_SECONDS = 900
 """How long to wait for a run before giving up. Runs can be slow; agents think."""
 
 _DEFAULT_RETRY_BACKOFF_SECONDS = 1.0
+_MAX_RETRY_BACKOFF_SECONDS = 30.0
+
+
+def _busy_backoff(busy: SessionBusyError, attempt: int) -> float:
+    """How long to wait before knocking on a busy session again.
+
+    ``retry_after`` wins whenever the server sent one, including ``0`` — the
+    server saying "come straight back" is an instruction, and reading 0 as
+    "unset" turned it into a full second of nothing. (``or`` treats 0 as
+    missing; this does not.)
+
+    Without a hint, back off exponentially with jitter. A flat one-second wait
+    means every caller queued on the same session wakes together and knocks in
+    step, and the run holding the claim can last minutes — so the retries least
+    likely to succeed were also the ones repeated most often.
+    """
+    if busy.retry_after is not None:
+        return max(0.0, float(busy.retry_after))
+    ceiling = min(
+        _DEFAULT_RETRY_BACKOFF_SECONDS * (2**attempt), _MAX_RETRY_BACKOFF_SECONDS
+    )
+    # Full jitter: uniform over [0, ceiling] rather than ceiling ± a little, so
+    # a thundering herd spreads out instead of shifting together.
+    return random.uniform(0.0, ceiling)
 
 
 class _Unset:
@@ -415,7 +440,7 @@ class Runs(_RuntimeBaseClient):
             except SessionBusyError as busy:
                 if attempt >= max_retries:
                     raise
-                time.sleep(busy.retry_after or _DEFAULT_RETRY_BACKOFF_SECONDS)
+                time.sleep(_busy_backoff(busy, attempt))
 
         raise AssertionError("unreachable")  # pragma: no cover
 
@@ -483,7 +508,7 @@ class Runs(_RuntimeBaseClient):
             except SessionBusyError as busy:
                 if attempt >= max_retries:
                     raise
-                time.sleep(busy.retry_after or _DEFAULT_RETRY_BACKOFF_SECONDS)
+                time.sleep(_busy_backoff(busy, attempt))
 
     def _iter_events(
         self,
@@ -640,8 +665,8 @@ class EndUsers(_RuntimeBaseClient):
         self,
         end_user_id: str,
         *,
-        budget_cap_usd: MoneyInput | None | _Unset = UNSET,
-        metadata: dict[str, Any] | None | _Unset = UNSET,
+        budget_cap_usd: MoneyInput | _Unset | None = UNSET,
+        metadata: dict[str, Any] | _Unset | None = UNSET,
     ) -> EndUser:
         """Set an end user's budget override or metadata.
 
@@ -679,7 +704,7 @@ class Settings(_RuntimeBaseClient):
         return self._json_request("GET", "/runtime/settings")
 
     def update(
-        self, *, default_end_user_budget_usd: MoneyInput | None | _Unset = UNSET
+        self, *, default_end_user_budget_usd: MoneyInput | _Unset | None = UNSET
     ) -> RuntimeSettings:
         """Set the default budget every end user starts with.
 

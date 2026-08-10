@@ -101,6 +101,20 @@ const RUN_WIRE = {
   created_at: "2026-08-09T00:00:00Z",
 };
 
+const END_USER_WIRE = {
+  end_user_id: "usr_8837",
+  object: "end_user",
+  first_activity_at: "2026-08-01T00:00:00Z",
+  budget: {
+    cap_usd: "5.000000",
+    source: "override",
+    window_start: "2026-08-01T00:00:00Z",
+    window_resets_at: "2026-08-31T00:00:00Z",
+    spent_usd: "0.000000",
+  },
+  created_at: "2026-08-01T00:00:00Z",
+};
+
 // A whole run on the wire, including one event name this SDK has never heard
 // of. Deltas carry no id: they are not stored, so they are not resume points.
 const SSE_BODY = `id: 1
@@ -418,6 +432,47 @@ describe("money", () => {
     }
 
     // It fails before the request, not after a 422 round trip.
+    assert.equal(calls.length, 0);
+  });
+
+  it("treats an explicit undefined as absent, not as a request to clear", async () => {
+    // `"budgetCapUsd" in params` is true when the key was passed with an
+    // undefined value — which is exactly what spreading an optional variable
+    // produces. That used to be coerced to null and sent, wiping the cap the
+    // caller was trying to leave alone.
+    const { fetch, calls } = makeFetchMock(() => ({ status: 200, body: END_USER_WIRE }));
+    const client = new ManagedAgentsClient(makeConfig(fetch));
+
+    const maybeCap: string | undefined = undefined;
+    await client.endUsers.update("usr_8837", { budgetCapUsd: maybeCap, metadata: undefined });
+
+    assert.deepEqual(calls[0]!.body, {});
+
+    await client.settings.update({ defaultEndUserBudgetUsd: undefined });
+    assert.deepEqual(calls[1]!.body, {});
+  });
+
+  it("still clears the cap when the caller writes null", async () => {
+    const { fetch, calls } = makeFetchMock(() => ({ status: 200, body: END_USER_WIRE }));
+    const client = new ManagedAgentsClient(makeConfig(fetch));
+
+    await client.endUsers.update("usr_8837", { budgetCapUsd: null });
+    assert.deepEqual(calls[0]!.body, { budget_cap_usd: null });
+  });
+
+  it("refuses a malformed amount string, not just a number", async () => {
+    // Refusing a number and then sending "1e-7" — the exact form the API
+    // rejects — would leave the front door open on a locked window.
+    const { fetch, calls } = makeFetchMock(() => ({ status: 200, body: END_USER_WIRE }));
+    const client = new ManagedAgentsClient(makeConfig(fetch));
+
+    for (const bad of ["1e-7", "abc", "-5", "5.0000001", "$5.00", ""]) {
+      await assert.rejects(
+        async () => client.endUsers.update("usr_8837", { budgetCapUsd: bad }),
+        (error: unknown) =>
+          error instanceof TypeError && /not a valid amount/.test(error.message),
+      );
+    }
     assert.equal(calls.length, 0);
   });
 

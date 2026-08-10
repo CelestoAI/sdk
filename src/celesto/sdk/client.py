@@ -21,12 +21,12 @@ from .types import ComputerTerminalSessionInfo
 
 __all__ = [
     "_BASE_URL",
-    "_BaseClient",
-    "_BaseConnection",
-    "_CelestoClient",
     "Computers",
     "Deployment",
     "GateKeeper",
+    "_BaseClient",
+    "_BaseConnection",
+    "_CelestoClient",
 ]
 
 # Deployed proxies can terminate long idle buffered exec responses before the

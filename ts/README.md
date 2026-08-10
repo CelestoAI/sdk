@@ -113,7 +113,12 @@ event and nothing else.
 the finished run:
 
 ```ts
-const run = await celesto.runs.create(agent.id, {
+import { ManagedAgentsClient } from "@celestoai/sdk";
+
+const celesto = new ManagedAgentsClient({ apiKey: process.env.CELESTO_API_KEY });
+const agentId = "agt_your_agent_id";
+
+const run = await celesto.runs.create(agentId, {
   input: "Where is my order?",
   endUserId: "usr_8837",
 });
@@ -137,6 +142,10 @@ fixed is before it leaves your program.
 Give one user a cap, or set the default for everyone:
 
 ```ts
+import { ManagedAgentsClient } from "@celestoai/sdk";
+
+const celesto = new ManagedAgentsClient({ apiKey: process.env.CELESTO_API_KEY });
+
 await celesto.endUsers.update("usr_8837", { budgetCapUsd: "5.00" });
 await celesto.settings.update({ defaultEndUserBudgetUsd: "0.50" });
 ```
@@ -152,7 +161,12 @@ the run that already happened instead of running the agent — and charging your
 user — twice.
 
 ```ts
-const run = await celesto.runs.create(agent.id, {
+import { ManagedAgentsClient } from "@celestoai/sdk";
+
+const celesto = new ManagedAgentsClient({ apiKey: process.env.CELESTO_API_KEY });
+const agentId = "agt_your_agent_id";
+
+const run = await celesto.runs.create(agentId, {
   input: "Where is my order?",
   endUserId: "usr_8837",
   idempotencyKey: "order-status-42",
@@ -169,11 +183,16 @@ Every run belongs to a session, which is that user's transcript. Leave
 `sessionId` out and Celesto starts one; pass it back to continue:
 
 ```ts
-const first = await celesto.runs.create(agent.id, {
+import { ManagedAgentsClient } from "@celestoai/sdk";
+
+const celesto = new ManagedAgentsClient({ apiKey: process.env.CELESTO_API_KEY });
+const agentId = "agt_your_agent_id";
+
+const first = await celesto.runs.create(agentId, {
   input: "Hello",
   endUserId: "usr_8837",
 });
-const followUp = await celesto.runs.create(agent.id, {
+const followUp = await celesto.runs.create(agentId, {
   input: "And the one before that?",
   endUserId: "usr_8837",
   sessionId: first.sessionId,
@@ -407,8 +426,8 @@ The SDK exports these error classes:
 | `CelestoNetworkError` | The network request fails |
 | `CelestoError` | Base class for all SDK errors |
 
-Agent runs add an error class per reason a run can be refused, so you can react
-to the specific one. Each extends `ManagedAgentError`, which extends
+Managed agents add an error class per reason an operation can be refused, so you
+can react to the specific one. Each extends `ManagedAgentError`, which extends
 `CelestoApiError`.
 
 | Error | When it is used |
@@ -421,7 +440,7 @@ to the specific one. Each extends `ManagedAgentError`, which extends
 | `SessionAgentMismatchError` | That conversation belongs to a different agent |
 | `SessionEndUserMismatchError` | That conversation belongs to a different user |
 | `ModelRequiresOwnKeyError` | This model runs only on your own provider key |
-| `ConfigKeyNotAllowedError` | The agent config carried an unsupported setting |
+| `ConfigKeyNotAllowedError` | The agent config carried an unsupported setting. Thrown by `agents.create()`/`agents.update()` before any request is sent, not by a run |
 
 ## Develop Locally
 

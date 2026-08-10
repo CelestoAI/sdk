@@ -336,6 +336,8 @@ const toPage = <W, T>(wire: PageWire<W>, map: (item: W) => T): Page<T> => ({
  * surfacing a 422 from three layers down. The message does not echo the number
  * back, because its repr is the caller's rounding error.
  */
+const MONEY_PATTERN = /^\d{1,8}(\.\d{1,6})?$/;
+
 const toMoneyString = (value: string | number): string => {
   if (typeof value === "number") {
     throw new TypeError(
@@ -343,7 +345,18 @@ const toMoneyString = (value: string | number): string => {
         `these amounts exactly. Pass a decimal string instead — "5.00", not 5.0.`,
     );
   }
-  return value.trim();
+  const text = value.trim();
+  // Refusing a number and then waving through "1e-7" — the exact form the API
+  // rejects — would leave the front door open on a locked window. The pattern
+  // mirrors the server's, so a refusal here is the refusal the API would make.
+  if (!MONEY_PATTERN.test(text)) {
+    throw new TypeError(
+      `"${value}" is not a valid amount. Use a plain decimal amount with at most ` +
+        `8 digits before the point and 6 after, like "5.00" — no sign, no exponent, ` +
+        `no currency symbol.`,
+    );
+  }
+  return text;
 };
 
 const sleep = (ms: number): Promise<void> =>
@@ -828,15 +841,18 @@ export class EndUsersClient extends BaseClient {
     params: UpdateEndUserParams,
     options?: RequestOverrides,
   ): Promise<EndUser> {
+    // Gated on `!== undefined`, not `in`: `in` reports a key as present when
+    // it was passed explicitly as undefined, which is what spreading an
+    // optional variable produces. Coercing that to null sent "clear the cap" —
+    // a destructive instruction the caller never wrote. Only a literal null
+    // clears.
     const body: Record<string, unknown> = {};
-    if ("budgetCapUsd" in params) {
+    if (params.budgetCapUsd !== undefined) {
       body.budget_cap_usd =
-        params.budgetCapUsd === null || params.budgetCapUsd === undefined
-          ? null
-          : toMoneyString(params.budgetCapUsd);
+        params.budgetCapUsd === null ? null : toMoneyString(params.budgetCapUsd);
     }
-    if ("metadata" in params) {
-      body.metadata = params.metadata ?? null;
+    if (params.metadata !== undefined) {
+      body.metadata = params.metadata;
     }
 
     const wire = await this.call<EndUserWire>({
@@ -876,11 +892,12 @@ export class RuntimeSettingsClient extends BaseClient {
     params: UpdateRuntimeSettingsParams,
     options?: RequestOverrides,
   ): Promise<RuntimeSettings> {
+    // Same gate as EndUsers.update: an explicit undefined must not read as
+    // "clear the org default".
     const body: Record<string, unknown> = {};
-    if ("defaultEndUserBudgetUsd" in params) {
+    if (params.defaultEndUserBudgetUsd !== undefined) {
       body.default_end_user_budget_usd =
-        params.defaultEndUserBudgetUsd === null ||
-        params.defaultEndUserBudgetUsd === undefined
+        params.defaultEndUserBudgetUsd === null
           ? null
           : toMoneyString(params.defaultEndUserBudgetUsd);
     }

@@ -18,6 +18,7 @@ from celesto.sdk.runtime import (
     iter_sse_frames,
     to_money_string,
 )
+from celesto.sdk.runtime import client as runtime_client
 
 BASE_URL = "https://api.example.test/v1"
 
@@ -464,7 +465,64 @@ def test_session_busy_retries_with_one_key_and_honours_retry_after():
     assert run["run_id"] == "run_1"
     keys = [call["headers"]["Idempotency-Key"] for call in session.calls]
     # A retry without a key could charge the end user twice, so one is made.
-    assert len(keys) == 2 and keys[0] == keys[1] and keys[0]
+    assert len(keys) == 2
+    assert keys[0] == keys[1]
+    assert keys[0]
+
+
+def test_retry_after_zero_means_zero_not_the_default_backoff(monkeypatch):
+    """The header says "come straight back". `retry_after or DEFAULT` read 0
+    as absent and slept a full second instead — the one case where the server
+    was most explicit was the one case it was ignored."""
+    slept: list[float] = []
+    monkeypatch.setattr(runtime_client.time, "sleep", slept.append)
+
+    session = DummySession(
+        responses=[
+            {
+                "status_code": 409,
+                "payload": {
+                    "detail": {"code": "session_busy", "message": "Run in flight."}
+                },
+                "headers": {"Retry-After": "0"},
+            },
+            {"payload": RUN_PAYLOAD},
+        ]
+    )
+    make_client(session).runs.create(
+        "agt_1", input="Hi", end_user_id="usr_8837", max_retries=1
+    )
+
+    assert slept == [0.0]
+
+
+def test_without_a_retry_after_the_wait_grows_and_is_jittered(monkeypatch):
+    """A flat one-second wait woke every caller queued on the same session at
+    the same moment, so they knocked in step. Full jitter spreads them."""
+    slept: list[float] = []
+    monkeypatch.setattr(runtime_client.time, "sleep", slept.append)
+
+    busy = {
+        "status_code": 409,
+        "payload": {"detail": {"code": "session_busy", "message": "busy"}},
+    }
+    session = DummySession(responses=[busy, busy, {"payload": RUN_PAYLOAD}])
+    make_client(session).runs.create(
+        "agt_1", input="Hi", end_user_id="usr_8837", max_retries=2
+    )
+
+    assert len(slept) == 2
+    # Full jitter: uniform over [0, ceiling], and the ceiling doubles per attempt.
+    assert 0.0 <= slept[0] <= 1.0
+    assert 0.0 <= slept[1] <= 2.0
+
+
+def test_the_backoff_ceiling_is_bounded():
+    """Doubling without a cap reaches hours. The session claim expires long
+    before that, so waiting past the ceiling only wastes the caller's time."""
+    busy = SessionBusyError("busy", code="session_busy")
+    assert busy.retry_after is None
+    assert runtime_client._busy_backoff(busy, attempt=50) <= 30.0
 
 
 def test_session_busy_is_raised_when_retries_run_out():
@@ -735,3 +793,30 @@ def test_runtime_settings_round_trip():
     assert current["default_end_user_budget_usd"] == Decimal("0.500000")
     assert updated["default_end_user_budget_usd"] == Decimal("1.000000")
     assert session.calls[1]["json"] == {"default_end_user_budget_usd": "1.00"}
+
+
+def test_a_malformed_amount_string_is_refused_like_a_float(monkeypatch):
+    """The float guard existed to stop a bad amount reaching the wire, and the
+    string path walked straight past it: `to_money_string("1e-7")` handed the
+    API the exact scientific-notation form it rejects, and `"abc"` sailed
+    through too. Every accepted type now funnels through one check."""
+    for bad in ["1e-7", "abc", "-5", "5.0000001", "999999999", "$5.00", "", "5,00"]:
+        with pytest.raises(ValueError, match="not a valid amount"):
+            to_money_string(bad)
+
+
+def test_well_formed_amounts_still_pass_untouched():
+    assert to_money_string("5.00") == "5.00"  # scale preserved, not normalized
+    assert to_money_string("  0.500000  ") == "0.500000"
+    assert to_money_string(Decimal("0.000450")) == "0.000450"
+    assert to_money_string(0) == "0"
+    assert to_money_string(99999999) == "99999999"
+
+
+def test_a_decimal_the_api_would_reject_is_caught_here_too():
+    """Decimal is exact, which is not the same as in range. A Decimal with
+    more than six places rounds to zero server-side."""
+    with pytest.raises(ValueError, match="not a valid amount"):
+        to_money_string(Decimal("0.0000001"))
+    with pytest.raises(ValueError, match="not a valid amount"):
+        to_money_string(Decimal(-1))

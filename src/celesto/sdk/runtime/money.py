@@ -20,12 +20,18 @@ a 422 from three layers down.
 Never call ``float()`` on these values.
 """
 
+import re
 from collections.abc import Iterable
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 MoneyInput = Any
 """Anything you can hand the SDK as an amount: Decimal, str, or int."""
+
+#: The shape the API accepts: up to eight digits, then at most the column's six
+#: decimals. No sign, no exponent. Mirrors MONEY_IN_PATTERN server-side, so a
+#: refusal here is the same refusal the API would have made.
+MONEY_PATTERN = re.compile(r"^\d{1,8}(\.\d{1,6})?$")
 
 
 def to_decimal(value: Any) -> Decimal | None:
@@ -40,12 +46,31 @@ def to_decimal(value: Any) -> Decimal | None:
         return None
 
 
+def _checked(text: str, *, original: Any) -> str:
+    """The wire form, or a ValueError naming what is wrong with it.
+
+    Every accepted type funnels through here, so the string path cannot skip
+    the check the float path exists to enforce. Refusing a float and then
+    waving through ``"1e-7"`` — the exact form the API rejects — left the front
+    door open on a locked window.
+    """
+    if not MONEY_PATTERN.fullmatch(text):
+        raise ValueError(
+            f"{original!r} is not a valid amount. Use a plain decimal amount with at "
+            'most 8 digits before the point and 6 after, like "5.00" — no sign, no '
+            "exponent, no currency symbol."
+        )
+    return text
+
+
 def to_money_string(value: Any) -> str:
     """Serialize an amount for the API without ever going through a float."""
-    if isinstance(value, Decimal):
-        return format(value, "f")
     if isinstance(value, bool):
+        # Before the int branch: bool is an int, and True would otherwise
+        # serialize as "1".
         raise TypeError("Budget amounts must be a number, not a boolean.")
+    if isinstance(value, Decimal):
+        return _checked(format(value, "f"), original=value)
     if isinstance(value, float):
         # Called out separately, and before the int branch, because float is
         # the case worth explaining rather than lumping into "unsupported
@@ -58,7 +83,7 @@ def to_money_string(value: Any) -> str:
             'Decimal("5.00") or "5.00", not 5.0.'
         )
     if isinstance(value, (int, str)):
-        return str(value).strip()
+        return _checked(str(value).strip(), original=value)
     raise TypeError(
         f"Budget amounts must be a Decimal, string, or int, got {type(value).__name__}."
     )

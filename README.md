@@ -298,8 +298,13 @@ print(f"\nSpent {budget['spent_usd']} of {budget['cap_usd']}")
 the finished run:
 
 ```python
+from celesto import ManagedAgentsClient
+
+celesto = ManagedAgentsClient()
+agent_id = "agt_your_agent_id"
+
 run = celesto.runs.create(
-    agent["id"], input="Where is my order?", end_user_id="usr_8837"
+    agent_id, input="Where is my order?", end_user_id="usr_8837"
 )
 print(run["output"], run["usage"]["cost_usd"])
 ```
@@ -322,6 +327,10 @@ Give one user a cap, or set the default for everyone:
 ```python
 from decimal import Decimal
 
+from celesto import ManagedAgentsClient
+
+celesto = ManagedAgentsClient()
+
 celesto.end_users.update("usr_8837", budget_cap_usd=Decimal("5.00"))
 celesto.settings.update(default_end_user_budget_usd=Decimal("0.50"))
 ```
@@ -337,8 +346,13 @@ the run that already happened instead of running the agent — and charging your
 user — twice.
 
 ```python
+from celesto import ManagedAgentsClient
+
+celesto = ManagedAgentsClient()
+agent_id = "agt_your_agent_id"
+
 run = celesto.runs.create(
-    agent["id"],
+    agent_id,
     input="Where is my order?",
     end_user_id="usr_8837",
     idempotency_key="order-status-42",
@@ -356,9 +370,14 @@ Every run belongs to a session, which is that user's transcript. Leave
 `session_id` out and Celesto starts one; pass it back to continue:
 
 ```python
-run = celesto.runs.create(agent["id"], input="Hello", end_user_id="usr_8837")
+from celesto import ManagedAgentsClient
+
+celesto = ManagedAgentsClient()
+agent_id = "agt_your_agent_id"
+
+run = celesto.runs.create(agent_id, input="Hello", end_user_id="usr_8837")
 follow_up = celesto.runs.create(
-    agent["id"],
+    agent_id,
     input="And the one before that?",
     end_user_id="usr_8837",
     session_id=run["session_id"],
@@ -668,24 +687,32 @@ from celesto.sdk.exceptions import (
 
 `CelestoRateLimitError` includes a `retry_after` value when the API sends one.
 
-Agent runs add an exception per reason a run can be refused, so you can react to
-the specific one. Each is a `ManagedAgentError`, which is a `CelestoError`.
+Managed agents add an exception per reason an operation can be refused, so you
+can react to the specific one. Each is a `ManagedAgentError`, which is a
+`CelestoError`.
 
 ```python
-from celesto import BudgetExceededError, SessionBusyError
+from celesto import BudgetExceededError, ManagedAgentsClient, SessionBusyError
+
+celesto = ManagedAgentsClient()
+agent_id = "agt_your_agent_id"
 
 try:
     run = celesto.runs.create(agent_id, input="Hi", end_user_id="usr_8837")
-except BudgetExceededError:
-    prompt_the_user_to_upgrade()
+except BudgetExceededError as exceeded:
+    print(f"Budget spent; resets {exceeded.response}")
 except SessionBusyError as busy:
-    retry_in(busy.retry_after)
+    print(f"Busy, retry in {busy.retry_after} seconds")
 ```
 
-The full set: `BudgetExceededError`, `SessionBusyError`,
+Raised by a run: `BudgetExceededError`, `SessionBusyError`,
 `IdempotencyConflictError`, `AgentArchivedError`, `ProviderNotConnectedError`,
-`SessionAgentMismatchError`, `SessionEndUserMismatchError`,
-`ModelRequiresOwnKeyError`, and `ConfigKeyNotAllowedError`.
+`SessionAgentMismatchError`, `SessionEndUserMismatchError`, and
+`ModelRequiresOwnKeyError`.
+
+Raised by `agents.create()` and `agents.update()`: `ConfigKeyNotAllowedError`,
+when the config carries a setting the API does not accept. The SDK checks the
+allowlist itself, so this one is raised before any request is sent.
 
 ## Develop Locally
 
