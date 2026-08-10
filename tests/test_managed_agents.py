@@ -73,7 +73,7 @@ AGENT_PAYLOAD = {
     "id": "agt_1",
     "object": "agent",
     "name": "support-bot",
-    "model": "gpt-5-mini",
+    "model": "openai/gpt-5.4-mini",
     "instructions": "Be brief.",
     "config": {"temperature": 0.2},
     "version": 1,
@@ -154,7 +154,7 @@ def test_create_agent_posts_the_definition_and_returns_it():
 
     agent = client.agents.create(
         name="support-bot",
-        model="gpt-5-mini",
+        model="openai/gpt-5.4-mini",
         instructions="Be brief.",
         config={"temperature": 0.2, "max_turns": 4},
     )
@@ -164,7 +164,7 @@ def test_create_agent_posts_the_definition_and_returns_it():
     assert session.calls[0]["url"] == f"{BASE_URL}/agents"
     assert session.calls[0]["json"] == {
         "name": "support-bot",
-        "model": "gpt-5-mini",
+        "model": "openai/gpt-5.4-mini",
         "instructions": "Be brief.",
         "config": {"temperature": 0.2, "max_turns": 4},
     }
@@ -176,7 +176,7 @@ def test_agent_config_outside_the_allowlist_is_refused_before_sending():
 
     with pytest.raises(ConfigKeyNotAllowedError) as excinfo:
         client.agents.create(
-            name="support-bot", model="gpt-5-mini", config={"tempurature": 0.2}
+            name="support-bot", model="openai/gpt-5.4-mini", config={"tempurature": 0.2}
         )
 
     assert "tempurature" in str(excinfo.value)
@@ -530,7 +530,7 @@ def test_unknown_error_codes_still_raise_the_standard_exception():
 SSE_BODY = """\
 id: 1
 event: run.started
-data: {"run_id":"run_1","end_user_id":"usr_8837","model":"gpt-5-mini"}
+data: {"run_id":"run_1","end_user_id":"usr_8837","model":"openai/gpt-5.4-mini"}
 
 : keep-alive
 
@@ -550,7 +550,7 @@ data: {"call_id":"call_1","name":"lookup_order","args":{"id":"42"},"turn":1}
 
 id: 4
 event: usage
-data: {"turn":1,"model":"gpt-5-mini","input_tokens":120,"output_tokens":32,"total_tokens":152,"cost_usd":"0.000450"}
+data: {"turn":1,"model":"openai/gpt-5.4-mini","input_tokens":120,"output_tokens":32,"total_tokens":152,"cost_usd":"0.000450"}
 
 id: 5
 event: run.completed

@@ -70,7 +70,7 @@ const AGENT_WIRE = {
   id: "agt_1",
   object: "agent",
   name: "support-bot",
-  model: "gpt-5-mini",
+  model: "openai/gpt-5.4-mini",
   instructions: "Be brief.",
   config: { temperature: 0.2, max_turns: 4 },
   version: 1,
@@ -105,7 +105,7 @@ const RUN_WIRE = {
 // of. Deltas carry no id: they are not stored, so they are not resume points.
 const SSE_BODY = `id: 1
 event: run.started
-data: {"run_id":"run_1","agent_id":"agt_1","agent_version_id":"agv_1","session_id":"ses_1","end_user_id":"usr_8837","model":"gpt-5-mini","created_at":"2026-08-09T00:00:00Z"}
+data: {"run_id":"run_1","agent_id":"agt_1","agent_version_id":"agv_1","session_id":"ses_1","end_user_id":"usr_8837","model":"openai/gpt-5.4-mini","created_at":"2026-08-09T00:00:00Z"}
 
 : keep-alive
 
@@ -129,7 +129,7 @@ data: {"call_id":"call_1","name":"lookup_order","result":{"eta":"tomorrow"},"tur
 
 id: 5
 event: usage
-data: {"turn":1,"model":"gpt-5-mini","input_tokens":120,"output_tokens":32,"total_tokens":152,"cost_usd":"0.000450"}
+data: {"turn":1,"model":"openai/gpt-5.4-mini","input_tokens":120,"output_tokens":32,"total_tokens":152,"cost_usd":"0.000450"}
 
 id: 6
 event: run.completed
@@ -163,13 +163,15 @@ const streamingFetch = (
 };
 
 describe("ManagedAgentsClient", () => {
-  it("exposes the four namespaces from the package root", () => {
+  it("exposes the five namespaces from the package root, named as in Python", () => {
     assert.equal(sdk.ManagedAgentsClient, ManagedAgentsClient);
     const client = new ManagedAgentsClient({ token: "t" });
     assert.ok(client.agents);
     assert.ok(client.runs);
     assert.ok(client.sessions);
+    // endUsers/end_users differ only by each language's casing convention.
     assert.ok(client.endUsers);
+    assert.ok(client.settings);
   });
 
   it("create() posts the definition and maps snake_case to camelCase", async () => {
@@ -178,7 +180,7 @@ describe("ManagedAgentsClient", () => {
 
     const agent = await client.agents.create({
       name: "support-bot",
-      model: "gpt-5-mini",
+      model: "openai/gpt-5.4-mini",
       instructions: "Be brief.",
       config: { temperature: 0.2, maxTurns: 4 },
     });
@@ -189,7 +191,7 @@ describe("ManagedAgentsClient", () => {
     assert.equal(calls[0]!.url, "https://api.example.test/v1/agents");
     assert.deepEqual(calls[0]!.body, {
       name: "support-bot",
-      model: "gpt-5-mini",
+      model: "openai/gpt-5.4-mini",
       instructions: "Be brief.",
       config: { temperature: 0.2, max_turns: 4 },
     });
@@ -203,7 +205,7 @@ describe("ManagedAgentsClient", () => {
       () =>
         client.agents.create({
           name: "support-bot",
-          model: "gpt-5-mini",
+          model: "openai/gpt-5.4-mini",
           // The type system rejects this too; the cast is what a JS caller does.
           config: { tempurature: 0.2 } as never,
         }),

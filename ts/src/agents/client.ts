@@ -944,7 +944,7 @@ async function* readEventStream(response: Response): AsyncGenerator<RunEvent> {
  * @example
  * ```ts
  * const celesto = new ManagedAgentsClient({ apiKey: process.env.CELESTO_API_KEY });
- * const agent = await celesto.agents.create({ name: "support-bot", model: "gpt-5-mini" });
+ * const agent = await celesto.agents.create({ name: "support-bot", model: "openai/gpt-5.4-mini" });
  * const run = await celesto.runs.create(agent.id, {
  *   input: "Where is my order?",
  *   endUserId: "usr_8837",

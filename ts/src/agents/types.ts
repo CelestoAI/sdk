@@ -101,7 +101,7 @@ export interface ArchivedAgent {
 export interface CreateAgentParams {
   /** Display name, 1-255 characters. */
   name: string;
-  /** Model to run, such as `"gpt-5-mini"`. Pinned per version. */
+  /** Model to run, such as `"openai/gpt-5.4-mini"`. Pinned per version. */
   model: string;
   /** The system prompt. */
   instructions?: string;

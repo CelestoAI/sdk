@@ -139,7 +139,7 @@ class Agents(_RuntimeBaseClient):
     Example:
         agent = client.agents.create(
             name="support-bot",
-            model="gpt-5-mini",
+            model="openai/gpt-5.4-mini",
             instructions="Answer order questions in one short paragraph.",
         )
     """
@@ -158,7 +158,7 @@ class Agents(_RuntimeBaseClient):
 
         Args:
             name: Display name, 1-255 characters.
-            model: Model to run, such as ``"gpt-5-mini"``. Pinned per version.
+            model: Model to run, such as ``"openai/gpt-5.4-mini"``. Pinned per version.
             instructions: The system prompt.
             description: Free text for your own dashboard, up to 1000 characters.
             config: Generation settings. Only the keys in
@@ -712,7 +712,7 @@ class ManagedAgentsClient(_BaseConnection):
         from celesto import ManagedAgentsClient
 
         celesto = ManagedAgentsClient()
-        agent = celesto.agents.create(name="support-bot", model="gpt-5-mini")
+        agent = celesto.agents.create(name="support-bot", model="openai/gpt-5.4-mini")
         run = celesto.runs.create(agent["id"], input="Where is my order?",
                                   end_user_id="usr_8837")
         print(run["output"])

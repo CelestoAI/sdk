@@ -89,7 +89,7 @@ const celesto = new ManagedAgentsClient({ apiKey: process.env.CELESTO_API_KEY })
 
 const agent = await celesto.agents.create({
   name: "support-bot",
-  model: "gpt-5-mini",
+  model: "openai/gpt-5.4-mini",
   instructions: "Answer order questions in one short paragraph.",
 });
 
