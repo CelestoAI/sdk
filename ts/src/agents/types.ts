@@ -276,11 +276,12 @@ export interface EndUser {
 
 export interface UpdateEndUserParams {
   /**
-   * Spend cap for the rolling 30-day window. Pass a decimal string to stay
-   * exact; `null` clears the override and falls back to the organization
-   * default. Omit the field to leave it alone.
+   * Spend cap for the rolling 30-day window. A decimal string, never a
+   * `number` — `0.1 + 0.2` would go out as `"0.30000000000000004"`, and the
+   * API refuses it. `null` clears the override and falls back to the
+   * organization default. Omit the field to leave it alone.
    */
-  budgetCapUsd?: DecimalString | number | null;
+  budgetCapUsd?: DecimalString | null;
   /** Free-form JSON of your own. `null` clears it. */
   metadata?: Record<string, unknown> | null;
 }
@@ -292,6 +293,9 @@ export interface RuntimeSettings {
 }
 
 export interface UpdateRuntimeSettingsParams {
-  /** The budget every end user starts with. `null` removes the default. */
-  defaultEndUserBudgetUsd?: DecimalString | number | null;
+  /**
+   * The budget every end user starts with, as a decimal string. `null`
+   * removes the default.
+   */
+  defaultEndUserBudgetUsd?: DecimalString | null;
 }

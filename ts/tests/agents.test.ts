@@ -393,6 +393,48 @@ describe("money", () => {
     assert.deepEqual(calls[1]!.body, { metadata: { plan: "free" } });
     assert.deepEqual(calls[2]!.body, { budget_cap_usd: null });
   });
+
+  it("refuses a number budget instead of shipping its rounding error", async () => {
+    // The type says DecimalString, but a type is advice at runtime: plain JS
+    // callers, `any`, and JSON parsed from elsewhere all arrive as numbers.
+    // This used to do String(value), so 0.1 + 0.2 went out as
+    // "0.30000000000000004" and 1e-7 as "1e-7" — both of which the API
+    // refuses anyway. 0.5 and 5 are refused too: sorting representable
+    // numbers from lossy ones is the trap.
+    const { fetch, calls } = makeFetchMock(() => ({ status: 200, body: {} }));
+    const client = new ManagedAgentsClient(makeConfig(fetch));
+
+    for (const amount of [0.5, 5, 0.1 + 0.2, 1e-7]) {
+      await assert.rejects(
+        async () =>
+          client.endUsers.update("usr_8837", {
+            budgetCapUsd: amount as unknown as string,
+          }),
+        (error: unknown) =>
+          error instanceof TypeError && /cannot be a number/.test(error.message),
+      );
+    }
+
+    // It fails before the request, not after a 422 round trip.
+    assert.equal(calls.length, 0);
+  });
+
+  it("does not suggest the caller's own rounding error as the fix", async () => {
+    const { fetch } = makeFetchMock(() => ({ status: 200, body: {} }));
+    const client = new ManagedAgentsClient(makeConfig(fetch));
+
+    await assert.rejects(
+      async () =>
+        client.endUsers.update("usr_8837", {
+          budgetCapUsd: (0.1 + 0.2) as unknown as string,
+        }),
+      (error: unknown) => {
+        const message = (error as Error).message;
+        const advice = message.slice(message.indexOf("Pass a decimal string"));
+        return !advice.includes("0.30000000000000004") && advice.includes('"5.00"');
+      },
+    );
+  });
 });
 
 describe("idempotency and retries", () => {

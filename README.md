@@ -310,6 +310,11 @@ Every amount — `cost_usd`, `spent_usd`, `cap_usd` — is a `Decimal`, not a fl
 A single answer can cost a few millionths of a dollar, and floats lose those
 when you add them up. Keep the `Decimal`.
 
+That runs both ways: passing a float where an amount is expected raises
+`TypeError` rather than sending it. `0.1 + 0.2` is `0.30000000000000004` in
+binary, and the only place that can still be fixed is before it leaves your
+program. Pass a `Decimal` or a string.
+
 ### Set a Spending Limit
 
 Give one user a cap, or set the default for everyone:

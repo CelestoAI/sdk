@@ -127,6 +127,11 @@ Every amount — `costUsd`, `spentUsd`, `capUsd` — is a decimal string such as
 dollar, which a JavaScript number cannot hold exactly. Display and compare the
 string; if you need arithmetic, use a decimal library rather than `parseFloat`.
 
+Writes are strings too. `budgetCapUsd` is typed `string`, so a number fails to
+compile, and passing one anyway throws rather than sending it — `0.1 + 0.2`
+stringifies to `"0.30000000000000004"`, and the only place that can still be
+fixed is before it leaves your program.
+
 ### Set a Spending Limit
 
 Give one user a cap, or set the default for everyone:

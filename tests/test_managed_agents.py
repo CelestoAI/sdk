@@ -346,10 +346,32 @@ def test_end_user_budget_fields_are_decimals():
 def test_budget_writes_go_out_as_strings_never_floats():
     assert to_money_string(Decimal("0.000450")) == "0.000450"
     assert to_money_string("1.25") == "1.25"
-    assert to_money_string(5) == "5"
-    assert to_money_string(0.5) == "0.5"
+    assert to_money_string(5) == "5"  # int is exact, and still goes out as a string
     with pytest.raises(TypeError):
         to_money_string(True)
+
+
+@pytest.mark.parametrize("amount", [0.5, 5.0, 0.1 + 0.2, 1e-7])
+def test_a_float_budget_is_refused_rather_than_quietly_transmitted(amount):
+    """This function used to accept floats "for convenience", routing them
+    through repr(): 0.1 + 0.2 went out as "0.30000000000000004" and 1e-7 as
+    "1e-7", which the API rejects outright. The convenience was sending the
+    caller's rounding error somewhere it could not be undone.
+
+    0.5 and 5.0 are refused too. Sorting representable floats from lossy ones
+    is the trap — a caller passing floats eventually passes a lossy one.
+    """
+    with pytest.raises(TypeError) as exc:
+        to_money_string(amount)
+    assert "cannot be a float" in str(exc.value)
+
+
+def test_the_refusal_does_not_hand_back_the_caller_s_own_rounding_error():
+    """repr(0.1 + 0.2) is "0.30000000000000004". Quoting it as the suggested
+    fix would recommend exactly the value the refusal exists to prevent."""
+    message = str(pytest.raises(TypeError, to_money_string, 0.1 + 0.2).value)
+    assert "0.30000000000000004" not in message.split("cannot hold")[1]
+    assert '"5.00"' in message  # a worked example instead
 
 
 def test_end_user_update_only_sends_the_fields_you_pass():

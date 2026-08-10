@@ -326,9 +326,25 @@ const toPage = <W, T>(wire: PageWire<W>, map: (item: W) => T): Page<T> => ({
   hasMore: wire.has_more ?? false,
 });
 
-/** Amounts go out as strings so a float never rounds someone's budget. */
-const toMoneyString = (value: string | number): string =>
-  typeof value === "number" ? String(value) : value.trim();
+/**
+ * Amounts go out as strings so a float never rounds someone's budget.
+ *
+ * The types already say `DecimalString`, but types are advice at runtime: plain
+ * JavaScript callers, `any`, and JSON parsed from elsewhere all reach here with
+ * a `number`. `String(0.1 + 0.2)` is `"0.30000000000000004"` and `String(1e-7)`
+ * is `"1e-7"` — the API refuses both, so throwing here names the fix instead of
+ * surfacing a 422 from three layers down. The message does not echo the number
+ * back, because its repr is the caller's rounding error.
+ */
+const toMoneyString = (value: string | number): string => {
+  if (typeof value === "number") {
+    throw new TypeError(
+      `Budget amounts cannot be a number (${value}): a JavaScript number cannot hold ` +
+        `these amounts exactly. Pass a decimal string instead — "5.00", not 5.0.`,
+    );
+  }
+  return value.trim();
+};
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));

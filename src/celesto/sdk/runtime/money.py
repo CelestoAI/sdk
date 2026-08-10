@@ -7,8 +7,15 @@ floats drifts. So:
 
 - Reading: strings become :class:`decimal.Decimal`.
 - Writing: :class:`~decimal.Decimal`, ``int`` and ``str`` are sent as strings.
-  A ``float`` is accepted for convenience and converted through its shortest
-  string form, which is what you typed.
+  A ``float`` is refused.
+
+Refusing the float is the whole point. It used to be accepted "for
+convenience", converted through ``repr()`` — so ``0.1 + 0.2`` was faithfully
+transmitted as ``"0.30000000000000004"`` and ``1e-7`` as ``"1e-7"``, which the
+API rejects outright. The convenience was to send the caller's rounding error
+somewhere it could not be undone. The API now accepts only decimal strings, so
+a float cannot succeed anyway; failing here names the fix instead of returning
+a 422 from three layers down.
 
 Never call ``float()`` on these values.
 """
@@ -18,7 +25,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 MoneyInput = Any
-"""Anything you can hand the SDK as an amount: Decimal, str, int, or float."""
+"""Anything you can hand the SDK as an amount: Decimal, str, or int."""
 
 
 def to_decimal(value: Any) -> Decimal | None:
@@ -39,13 +46,21 @@ def to_money_string(value: Any) -> str:
         return format(value, "f")
     if isinstance(value, bool):
         raise TypeError("Budget amounts must be a number, not a boolean.")
+    if isinstance(value, float):
+        # Called out separately, and before the int branch, because float is
+        # the case worth explaining rather than lumping into "unsupported
+        # type". The message deliberately does NOT echo the value back as a
+        # suggestion: repr(0.1 + 0.2) is "0.30000000000000004", so quoting it
+        # would recommend the caller's own rounding error.
+        raise TypeError(
+            f"Budget amounts cannot be a float ({value!r}): a float cannot hold these "
+            "amounts exactly. Pass the amount you mean as a Decimal or a string — "
+            'Decimal("5.00") or "5.00", not 5.0.'
+        )
     if isinstance(value, (int, str)):
         return str(value).strip()
-    if isinstance(value, float):
-        # repr() of a float is its shortest round-tripping form: 0.5 -> "0.5".
-        return format(Decimal(repr(value)), "f")
     raise TypeError(
-        f"Budget amounts must be a Decimal, string, or number, got {type(value).__name__}."
+        f"Budget amounts must be a Decimal, string, or int, got {type(value).__name__}."
     )
 
 
