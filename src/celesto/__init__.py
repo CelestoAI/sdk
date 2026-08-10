@@ -1,8 +1,38 @@
 """Celesto SDK package."""
 
 from .main import app
-from .sdk import Computer
+from .sdk import (
+    AgentArchivedError,
+    BudgetExceededError,
+    Computer,
+    ConfigKeyNotAllowedError,
+    IdempotencyConflictError,
+    ManagedAgentError,
+    ManagedAgentsClient,
+    ModelRequiresOwnKeyError,
+    ProviderNotConnectedError,
+    RunEvent,
+    SessionAgentMismatchError,
+    SessionBusyError,
+    SessionEndUserMismatchError,
+)
 
 __version__ = "0.0.11"
 
-__all__ = ["app", "Computer", "__version__"]
+__all__ = [
+    "AgentArchivedError",
+    "BudgetExceededError",
+    "Computer",
+    "ConfigKeyNotAllowedError",
+    "IdempotencyConflictError",
+    "ManagedAgentError",
+    "ManagedAgentsClient",
+    "ModelRequiresOwnKeyError",
+    "ProviderNotConnectedError",
+    "RunEvent",
+    "SessionAgentMismatchError",
+    "SessionBusyError",
+    "SessionEndUserMismatchError",
+    "__version__",
+    "app",
+]

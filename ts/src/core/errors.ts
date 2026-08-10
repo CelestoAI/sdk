@@ -11,13 +11,22 @@ export class CelestoApiError extends CelestoError {
   readonly status: number;
   readonly data: unknown;
   readonly requestId?: string;
+  /** Response headers, for the ones that carry meaning — such as Retry-After. */
+  readonly headers?: Headers;
 
-  constructor(message: string, status: number, data: unknown, requestId?: string) {
+  constructor(
+    message: string,
+    status: number,
+    data: unknown,
+    requestId?: string,
+    headers?: Headers,
+  ) {
     super(message);
     this.name = "CelestoApiError";
     this.status = status;
     this.data = data;
     this.requestId = requestId;
+    this.headers = headers;
   }
 }
 
