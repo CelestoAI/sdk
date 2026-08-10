@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 import httpx
@@ -19,6 +20,7 @@ from celesto.sdk.runtime import (
     to_money_string,
 )
 from celesto.sdk.runtime import client as runtime_client
+from celesto.sdk.runtime.money import parse_money_fields, to_decimal
 
 BASE_URL = "https://api.example.test/v1"
 
@@ -820,3 +822,60 @@ def test_a_decimal_the_api_would_reject_is_caught_here_too():
         to_money_string(Decimal("0.0000001"))
     with pytest.raises(ValueError, match="not a valid amount"):
         to_money_string(Decimal(-1))
+
+
+def test_user_metadata_is_never_rewritten_by_the_money_parser():
+    """The parser walked every dict in a response and converted any key spelled
+    like a money field. Metadata is the caller's own JSON: `{"cost_usd":
+    "not-money"}` came back as `{"cost_usd": None}` — their value destroyed —
+    and anything it did convert stopped being JSON-serializable."""
+    parsed = parse_money_fields(
+        {
+            "budget": {"cap_usd": "5.000000", "spent_usd": "0.000450"},
+            "usage": {"cost_usd": "0.000450"},
+            "metadata": {"cost_usd": "not-money", "nested": {"spent_usd": "1.23"}},
+        }
+    )
+
+    # Schema-owned money still becomes Decimal.
+    assert parsed["budget"]["cap_usd"] == Decimal("5.000000")
+    assert parsed["usage"]["cost_usd"] == Decimal("0.000450")
+
+    # The caller's JSON comes back exactly as it went in, and still serializes.
+    assert parsed["metadata"] == {
+        "cost_usd": "not-money",
+        "nested": {"spent_usd": "1.23"},
+    }
+    json.dumps(parsed["metadata"])
+
+
+def test_non_finite_amounts_read_back_as_none_rather_than_poisoning_arithmetic():
+    """A NaN returned from a field named `spent_usd` fails far from its cause:
+    every later sum is NaN and nothing says why."""
+    assert to_decimal("NaN") is None
+    assert to_decimal("Infinity") is None
+    assert to_decimal(Decimal("NaN")) is None
+    assert to_decimal("5.00") == Decimal("5.00")
+
+
+def test_an_enormous_decimal_is_refused_without_formatting_it_first():
+    """`format(Decimal("1E+999999999"), "f")` builds a one-gigabyte string.
+    Checking the formatted output would mean allocating a gigabyte to learn the
+    value was never acceptable, so magnitude is checked first."""
+    with pytest.raises(ValueError, match="not a valid amount"):
+        to_money_string(Decimal("1E+999999999"))
+    with pytest.raises(ValueError, match="NaN and infinity"):
+        to_money_string(Decimal("NaN"))
+    with pytest.raises(ValueError, match="NaN and infinity"):
+        to_money_string(Decimal("Infinity"))
+    # An exponent still within the wallet's range formats normally.
+    assert to_money_string(Decimal("1E+5")) == "100000"
+
+
+def test_unicode_digits_are_refused():
+    """Python's `\\d` matches every Unicode decimal digit, so "١٢" passed the
+    pattern and went to an API that reads ASCII only."""
+    with pytest.raises(ValueError, match="not a valid amount"):
+        to_money_string("١٢")
+    with pytest.raises(ValueError, match="not a valid amount"):
+        to_money_string("٥.٠٠")

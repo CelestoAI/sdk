@@ -25,25 +25,44 @@ from collections.abc import Iterable
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-MoneyInput = Any
-"""Anything you can hand the SDK as an amount: Decimal, str, or int."""
+MoneyInput = Decimal | str | int
+"""Anything you can hand the SDK as an amount. Not ``float``: see the module
+docstring. ``None`` and ``UNSET`` are spelled out where they are accepted,
+because there they mean "clear this" and "leave it alone" rather than an
+amount."""
 
 #: The shape the API accepts: up to eight digits, then at most the column's six
 #: decimals. No sign, no exponent. Mirrors MONEY_IN_PATTERN server-side, so a
 #: refusal here is the same refusal the API would have made.
-MONEY_PATTERN = re.compile(r"^\d{1,8}(\.\d{1,6})?$")
+#:
+#: ``[0-9]`` rather than ``\d``: Python's ``\d`` matches every Unicode decimal
+#: digit, so ``"١٢"`` passed this pattern and was sent to an API that reads
+#: ASCII only.
+MONEY_PATTERN = re.compile(r"^[0-9]{1,8}(\.[0-9]{1,6})?$")
+
+#: Largest exponent we will format. `format(Decimal("1E+999999999"), "f")`
+#: builds a one-gigabyte string before anything gets to reject it, so magnitude
+#: is checked before formatting, not after.
+_MAX_INTEGER_DIGITS = 8
+_MAX_DECIMAL_PLACES = 6
 
 
 def to_decimal(value: Any) -> Decimal | None:
-    """Parse an API money value into a Decimal. ``None`` stays ``None``."""
+    """Parse an API money value into a Decimal. ``None`` stays ``None``.
+
+    NaN and the infinities come back as ``None`` rather than as themselves: a
+    non-finite Decimal poisons every sum it touches, and silently returning one
+    from a field named ``spent_usd`` moves the failure far from its cause.
+    """
     if value is None:
         return None
     if isinstance(value, Decimal):
-        return value
+        return value if value.is_finite() else None
     try:
-        return Decimal(str(value))
+        parsed = Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+    return parsed if parsed.is_finite() else None
 
 
 def _checked(text: str, *, original: Any) -> str:
@@ -63,6 +82,28 @@ def _checked(text: str, *, original: Any) -> str:
     return text
 
 
+def _decimal_to_text(value: Decimal, *, original: Any) -> str:
+    """Format a Decimal for the wire, refusing what cannot be formatted safely.
+
+    Magnitude is checked *before* ``format``: ``Decimal("1E+999999999")``
+    formats to a one-gigabyte string, so validating the output would mean
+    allocating a gigabyte to discover the value was never acceptable.
+    ``_checked`` still has the final say on shape.
+    """
+    if not value.is_finite():
+        raise ValueError(
+            f"{original!r} is not a valid amount: NaN and infinity are not amounts."
+        )
+    exponent = value.as_tuple().exponent
+    if value.adjusted() >= _MAX_INTEGER_DIGITS or exponent < -_MAX_DECIMAL_PLACES:
+        raise ValueError(
+            f"{original!r} is not a valid amount. Use a plain decimal amount with at "
+            f"most {_MAX_INTEGER_DIGITS} digits before the point and "
+            f"{_MAX_DECIMAL_PLACES} after."
+        )
+    return _checked(format(value, "f"), original=original)
+
+
 def to_money_string(value: Any) -> str:
     """Serialize an amount for the API without ever going through a float."""
     if isinstance(value, bool):
@@ -70,7 +111,7 @@ def to_money_string(value: Any) -> str:
         # serialize as "1".
         raise TypeError("Budget amounts must be a number, not a boolean.")
     if isinstance(value, Decimal):
-        return _checked(format(value, "f"), original=value)
+        return _decimal_to_text(value, original=value)
     if isinstance(value, float):
         # Called out separately, and before the int branch, because float is
         # the case worth explaining rather than lumping into "unsupported
@@ -89,15 +130,31 @@ def to_money_string(value: Any) -> str:
     )
 
 
-def decimalize(payload: Any, fields: Iterable[str]) -> Any:
-    """Return ``payload`` with the named keys parsed as Decimal, recursively."""
+def decimalize(
+    payload: Any, fields: Iterable[str], *, opaque: Iterable[str] = ()
+) -> Any:
+    """Return ``payload`` with the named keys parsed as Decimal, recursively.
+
+    ``opaque`` names keys whose values are yours, not ours, and are copied
+    through untouched. Without it this walked into free-form JSON and rewrote
+    anything that happened to share a name with a money field: metadata
+    ``{"cost_usd": "not-money"}`` came back as ``{"cost_usd": None}`` — the
+    caller's own value destroyed — and any metadata it *did* convert stopped
+    being JSON-serializable.
+    """
     names = frozenset(fields)
+    untouched = frozenset(opaque)
 
     def walk(node: Any) -> Any:
         if isinstance(node, dict):
             result: dict[str, Any] = {}
             for key, value in node.items():
-                result[key] = to_decimal(value) if key in names else walk(value)
+                if key in untouched:
+                    result[key] = value
+                elif key in names:
+                    result[key] = to_decimal(value)
+                else:
+                    result[key] = walk(value)
             return result
         if isinstance(node, list):
             return [walk(item) for item in node]
@@ -117,14 +174,31 @@ MONEY_FIELDS = frozenset(
 )
 """Every response field that carries money."""
 
+OPAQUE_FIELDS = frozenset(
+    {
+        "metadata",  # end-user metadata: the caller's own JSON
+        "input",  # a run's stored request body
+        "item",  # a session message, verbatim
+        "args",  # tool-call arguments
+        "result",  # tool-call results
+        "config",  # an agent's generation settings
+    }
+)
+"""Response fields holding free-form JSON that is the caller's, not ours.
+
+Money never appears inside these, and a key inside them that happens to be
+spelled ``cost_usd`` means whatever the caller meant by it.
+"""
+
 
 def parse_money_fields(payload: Any) -> Any:
     """Parse every known money field in an API response into a Decimal."""
-    return decimalize(payload, MONEY_FIELDS)
+    return decimalize(payload, MONEY_FIELDS, opaque=OPAQUE_FIELDS)
 
 
 __all__ = [
     "MONEY_FIELDS",
+    "OPAQUE_FIELDS",
     "MoneyInput",
     "decimalize",
     "parse_money_fields",
