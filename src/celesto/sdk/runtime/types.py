@@ -242,7 +242,7 @@ class EndUser(TypedDict):
     created_at: str
 
 
-class RuntimeSettingsInfo(TypedDict):
+class RuntimeSettings(TypedDict):
     """Organization-wide defaults for managed agents."""
 
     organization_id: str
@@ -264,7 +264,7 @@ __all__ = [
     "RunEventItem",
     "RunEventPage",
     "RunUsage",
-    "RuntimeSettingsInfo",
+    "RuntimeSettings",
     "Session",
     "SessionMessage",
     "SessionPage",

@@ -6,12 +6,13 @@ own identifier for them (``"usr_8837"``, ``"alice@acme.com"``). Celesto keeps
 that user's spend, budget, and transcript together, so "what has this user
 spent this month?" is one call.
 
-Four namespaces hang off the client:
+Five namespaces hang off the client, named the same in every Celesto SDK:
 
 - ``agents`` — create, update (which cuts a new version), archive, roll back.
 - ``runs`` — run an agent, stream what it does, read a settled run's events.
 - ``sessions`` — the conversations an end user has had.
 - ``end_users`` — budget, spend, and metadata for one of your users.
+- ``settings`` — organization-wide defaults, such as the starting budget.
 """
 
 import time
@@ -39,7 +40,7 @@ from .types import (
     Run,
     RunEventItem,
     RunEventPage,
-    RuntimeSettingsInfo,
+    RuntimeSettings,
     Session,
     SessionMessage,
     SessionPage,
@@ -670,16 +671,16 @@ class EndUsers(_RuntimeBaseClient):
         return self.update(end_user_id, budget_cap_usd=None)
 
 
-class RuntimeSettings(_RuntimeBaseClient):
+class Settings(_RuntimeBaseClient):
     """Organization-wide defaults for managed agents."""
 
-    def get_settings(self) -> RuntimeSettingsInfo:
+    def get(self) -> RuntimeSettings:
         """Read the default budget every end user starts with."""
         return self._json_request("GET", "/runtime/settings")
 
-    def update_settings(
+    def update(
         self, *, default_end_user_budget_usd: MoneyInput | None | _Unset = UNSET
-    ) -> RuntimeSettingsInfo:
+    ) -> RuntimeSettings:
         """Set the default budget every end user starts with.
 
         Pass ``None`` to remove the default, which leaves end users uncapped
@@ -728,7 +729,7 @@ class ManagedAgentsClient(_BaseConnection):
         self.runs = Runs(self)
         self.sessions = Sessions(self)
         self.end_users = EndUsers(self)
-        self.runtime = RuntimeSettings(self)
+        self.settings = Settings(self)
 
     def __enter__(self) -> Self:
         return self
@@ -741,6 +742,6 @@ __all__ = [
     "EndUsers",
     "ManagedAgentsClient",
     "Runs",
-    "RuntimeSettings",
     "Sessions",
+    "Settings",
 ]

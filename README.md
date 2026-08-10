@@ -323,7 +323,7 @@ Give one user a cap, or set the default for everyone:
 from decimal import Decimal
 
 celesto.end_users.update("usr_8837", budget_cap_usd=Decimal("5.00"))
-celesto.runtime.update_settings(default_end_user_budget_usd=Decimal("0.50"))
+celesto.settings.update(default_end_user_budget_usd=Decimal("0.50"))
 ```
 
 The cap covers a 30-day window that starts the first time that user runs

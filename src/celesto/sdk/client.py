@@ -16,7 +16,7 @@ from .exceptions import (
     CelestoServerError,
     CelestoValidationError,
 )
-from .runtime.client import Agents, EndUsers, Runs, RuntimeSettings, Sessions
+from .runtime.client import Agents, EndUsers, Runs, Sessions, Settings
 from .types import ComputerTerminalSessionInfo
 
 __all__ = [
@@ -1041,4 +1041,4 @@ class _CelestoClient(_BaseConnection):
         self.runs = Runs(self)
         self.sessions = Sessions(self)
         self.end_users = EndUsers(self)
-        self.runtime = RuntimeSettings(self)
+        self.settings = Settings(self)

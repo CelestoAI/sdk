@@ -120,6 +120,20 @@ def test_managed_agent_namespaces_hang_off_both_clients():
         assert hasattr(client, "runs")
         assert hasattr(client, "sessions")
         assert hasattr(client, "end_users")
+        assert hasattr(client, "settings")
+
+
+def test_namespace_names_match_the_typescript_sdk():
+    """Five namespaces, one name each, across both SDKs. This one was
+    ``runtime`` in Python and ``settings`` in TypeScript, so anything written
+    against one SDK mistranslated against the other — and
+    ``runtime.get_settings()`` stuttered besides."""
+    client = ManagedAgentsClient("test-key", base_url=BASE_URL)
+    # end_users/endUsers differ only by each language's casing convention.
+    assert {"agents", "runs", "sessions", "end_users", "settings"} <= set(vars(client))
+    assert not hasattr(client, "runtime")
+    assert callable(client.settings.get)
+    assert callable(client.settings.update)
 
 
 def test_organization_id_is_sent_as_a_header_when_given():
@@ -715,10 +729,8 @@ def test_runtime_settings_round_trip():
     )
     client = make_client(session)
 
-    current = client.runtime.get_settings()
-    updated = client.runtime.update_settings(
-        default_end_user_budget_usd=Decimal("1.00")
-    )
+    current = client.settings.get()
+    updated = client.settings.update(default_end_user_budget_usd=Decimal("1.00"))
 
     assert current["default_end_user_budget_usd"] == Decimal("0.500000")
     assert updated["default_end_user_budget_usd"] == Decimal("1.000000")
