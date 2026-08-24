@@ -486,3 +486,96 @@ def test_computers_unpublish_port_hits_backend_endpoint():
         session.calls[0]["url"]
         == "https://api.example.test/v1/computers/cmp_123/published-ports/8000"
     )
+
+
+class SequencedSession:
+    """Session returning a queued payload per call, for multi-request flows."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+        self.timeout = httpx.Timeout(connect=10, read=120, write=10, pool=10)
+
+    def request(self, method, url, **kwargs):
+        self.calls.append({"method": method, "url": url, **kwargs})
+        status_code, payload = self.responses.pop(0)
+        return httpx.Response(
+            status_code,
+            json=payload,
+            request=httpx.Request(method, url),
+        )
+
+    def close(self):
+        pass
+
+
+def _client_with(session):
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+    return client
+
+
+def test_organizations_get_hits_backend_endpoint():
+    session = DummySession(payload={"id": "org-1", "name": "Celesto prod"})
+    client = _client_with(session)
+
+    organization = client.organizations.get("org-1")
+
+    assert organization["name"] == "Celesto prod"
+    assert session.calls[0]["method"] == "GET"
+    assert session.calls[0]["url"] == "https://api.example.test/v1/organizations/org-1"
+
+
+def test_organizations_active_reads_bound_org_off_projects():
+    session = SequencedSession(
+        [
+            (200, {"data": [{"id": "proj-1", "organization_id": "org-1"}]}),
+            (200, {"id": "org-1", "name": "Celesto prod"}),
+        ]
+    )
+    client = _client_with(session)
+
+    assert client.organizations.active() == {"id": "org-1", "name": "Celesto prod"}
+
+    projects_call = session.calls[0]
+    assert projects_call["method"] == "GET"
+    assert projects_call["url"] == "https://api.example.test/v1/projects/"
+    assert projects_call["params"] == {"skip": 0, "limit": 1}
+    assert session.calls[1]["url"] == "https://api.example.test/v1/organizations/org-1"
+
+
+def test_organizations_active_returns_none_without_projects():
+    session = SequencedSession([(200, {"data": []})])
+    client = _client_with(session)
+
+    assert client.organizations.active() is None
+    # No organization to look up, so no second round trip.
+    assert len(session.calls) == 1
+
+
+def test_organizations_active_returns_none_when_project_has_no_org():
+    session = SequencedSession([(200, {"data": [{"id": "proj-1"}]})])
+    client = _client_with(session)
+
+    assert client.organizations.active() is None
+    assert len(session.calls) == 1
+
+
+def test_organizations_active_returns_none_when_projects_request_fails():
+    session = SequencedSession([(500, {"detail": "boom"})])
+    client = _client_with(session)
+
+    # Used only to label output, so a failed lookup must not raise.
+    assert client.organizations.active() is None
+
+
+def test_organizations_active_falls_back_to_id_when_lookup_fails():
+    session = SequencedSession(
+        [
+            (200, {"data": [{"id": "proj-1", "organization_id": "org-1"}]}),
+            (500, {"detail": "boom"}),
+        ]
+    )
+    client = _client_with(session)
+
+    assert client.organizations.active() == {"id": "org-1", "name": None}

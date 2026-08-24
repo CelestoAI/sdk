@@ -993,7 +993,19 @@ class Organizations(_BaseClient):
     """Read-only view of the organization the current API key acts on."""
 
     def get(self, organization_id: str) -> dict[str, Any]:
-        """Fetch a single organization by ID."""
+        """Fetch a single organization by ID.
+
+        Args:
+            organization_id: ID of the organization to fetch.
+
+        Returns:
+            The organization record as returned by the API.
+
+        Raises:
+            CelestoAuthenticationError: If the key may not read the organization.
+            CelestoNotFoundError: If no organization has that ID.
+            CelestoServerError: If the API fails to answer.
+        """
         return self._request("GET", f"/organizations/{organization_id}")
 
     def active(self) -> dict[str, Any] | None:
@@ -1005,7 +1017,16 @@ class Organizations(_BaseClient):
         the bound organization back off a project instead: project listings are
         already scoped to the key's organization.
 
-        Returns None when the organization cannot be determined.
+        Returns:
+            A mapping with "id" and "name" for the bound organization, or None
+            when it cannot be determined: the projects request failed, the
+            organization has no projects, or the project carries no
+            organization ID. When the project lookup succeeds but fetching the
+            organization fails, "name" is None and only "id" is populated.
+
+        Note:
+            Never raises. Callers use this to label output, so a failure to
+            resolve degrades to None rather than breaking the command.
         """
         try:
             response = self._request(

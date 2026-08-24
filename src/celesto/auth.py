@@ -271,20 +271,25 @@ def _read_env_file_key(
     return dot_env.get(secret_name or "CELESTO_API_KEY"), dotenv_path
 
 
-def _warn_if_env_file_overrides_saved_login(resolved: ResolvedCredential) -> None:
+def _warn_if_env_file_overrides_saved_login(
+    resolved: ResolvedCredential, base_url: str | None = None
+) -> None:
     """Tell the user when a .env file silently outranks their saved login.
 
     API keys are bound to a single organization, so a stray .env in the working
     directory can point an otherwise identical command at a different tenant.
     Warn once per process, on stderr, and keep it network-free so it costs
     nothing on the hot path.
+
+    Saved credentials are stored per API URL, so base_url has to match the
+    endpoint the command targets or the comparison reads the wrong entry.
     """
     global _ENV_FILE_OVERRIDE_WARNED
 
     if resolved.origin != "env_file" or _ENV_FILE_OVERRIDE_WARNED:
         return
 
-    saved_key, _ = load_api_key_with_store()
+    saved_key, _ = load_api_key_with_store(base_url)
     if saved_key is None or saved_key == resolved.api_key:
         return
 
@@ -306,12 +311,17 @@ def resolve_cli_credential(
     ignore_env_file: bool | None = False,
     secret_name: str | None = None,
     warn_on_env_file_override: bool = True,
+    base_url: str | None = None,
 ) -> ResolvedCredential | None:
     """Resolve the API key a CLI command will use, and where it came from.
 
     Precedence is unchanged: explicit argument, then CELESTO_API_KEY, then a
     .env file in the current working directory, then the saved login. Returns
     None when no key is found anywhere.
+
+    Saved credentials are keyed by API URL, so callers that target a specific
+    endpoint must pass base_url; otherwise the saved login for the default URL
+    is used.
 
     Set warn_on_env_file_override=False when the caller prints its own, fuller
     explanation of the override (as `celesto auth status` does).
@@ -332,11 +342,11 @@ def resolve_cli_credential(
                 env_file_path=env_file_path,
             )
             if warn_on_env_file_override:
-                _warn_if_env_file_overrides_saved_login(resolved)
+                _warn_if_env_file_overrides_saved_login(resolved, base_url)
             return resolved
 
     if (secret_name or "CELESTO_API_KEY") == "CELESTO_API_KEY":
-        saved_key, saved_store = load_api_key_with_store()
+        saved_key, saved_store = load_api_key_with_store(base_url)
         if saved_key:
             return ResolvedCredential(
                 api_key=saved_key, origin="saved", saved_store=saved_store
@@ -437,7 +447,9 @@ def login(
 def status(base_url: BaseUrlOption = DEFAULT_BASE_URL):
     """Show which API key CLI commands use, and the organization it targets."""
     resolved_base_url = _resolve_base_url(base_url)
-    resolved = resolve_cli_credential(warn_on_env_file_override=False)
+    resolved = resolve_cli_credential(
+        warn_on_env_file_override=False, base_url=resolved_base_url
+    )
 
     if resolved is None:
         console.print("No saved API key was found. Run celesto auth login.")

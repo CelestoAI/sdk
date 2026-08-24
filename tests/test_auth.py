@@ -401,3 +401,77 @@ def test_status_flags_env_file_override_with_both_organizations(monkeypatch, tmp
     assert "Aniket personal (org-personal)" in result.output
     assert "overrides your saved login" in result.output
     assert "Celesto prod (org-prod)" in result.output
+
+
+# --- Saved credentials are keyed by API URL --------------------------------
+#
+# Credentials are stored per API URL, so resolution has to look up the endpoint
+# the command actually targets. Reading the default URL's entry while reporting
+# a different one would show the wrong organization.
+
+
+def test_resolve_cli_credential_looks_up_saved_login_for_the_given_base_url(
+    monkeypatch, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CELESTO_API_KEY", raising=False)
+    seen = []
+
+    def fake_load(base_url=None):
+        seen.append(base_url)
+        return ("staging-key", "keyring")
+
+    monkeypatch.setattr(auth, "load_api_key_with_store", fake_load)
+
+    resolved = auth.resolve_cli_credential(base_url="https://api.example.test/v1")
+
+    assert resolved.api_key == "staging-key"
+    assert seen == ["https://api.example.test/v1"]
+
+
+def test_env_file_override_warning_compares_against_the_same_base_url(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CELESTO_API_KEY", raising=False)
+    _write_env_file(tmp_path, "dotenv-key")
+    monkeypatch.setattr(auth, "_ENV_FILE_OVERRIDE_WARNED", False)
+    seen = []
+
+    def fake_load(base_url=None):
+        seen.append(base_url)
+        return ("staging-key", "keyring")
+
+    monkeypatch.setattr(auth, "load_api_key_with_store", fake_load)
+
+    auth.resolve_cli_credential(base_url="https://api.example.test/v1")
+
+    assert seen == ["https://api.example.test/v1"]
+    assert "overrides your saved login" in capsys.readouterr().err
+
+
+def test_status_resolves_saved_login_for_the_requested_base_url(monkeypatch, tmp_path):
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CELESTO_API_KEY", raising=False)
+    seen = []
+
+    def fake_load(base_url=None):
+        seen.append(base_url)
+        return ("staging-key", "keyring")
+
+    monkeypatch.setattr(auth, "load_api_key_with_store", fake_load)
+    monkeypatch.setattr(
+        auth,
+        "resolve_active_organization",
+        lambda api_key, base_url=None: {"id": "org-staging", "name": "Staging"},
+    )
+
+    result = runner.invoke(
+        auth.app, ["status", "--base-url", "https://api.example.test/v1"]
+    )
+
+    assert result.exit_code == 0
+    assert seen == ["https://api.example.test/v1"]
+    assert "https://api.example.test/v1" in result.output
+    assert "Staging (org-staging)" in result.output
