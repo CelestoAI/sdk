@@ -28,6 +28,14 @@ class _FakeComputers:
             {"exit_code": 0},
         ]
 
+    def stop(self, computer_id: str) -> dict:
+        self.calls.append(("stop", computer_id))
+        return {"id": "cmp_123", "name": computer_id, "status": "stopping"}
+
+    def delete(self, computer_id: str) -> dict:
+        self.calls.append(("delete", computer_id))
+        return {"id": "cmp_123", "name": computer_id, "status": "deleting"}
+
     @staticmethod
     def _computer_payload(name: str = "curie") -> dict:
         return {
@@ -114,9 +122,23 @@ class _FakeComputers:
         }
 
 
+class _FakeOrganizations:
+    def __init__(self, organization: dict[str, str] | None = None) -> None:
+        self.organization = organization
+        self.calls: list[str] = []
+
+    def active(self) -> dict[str, str] | None:
+        self.calls.append("active")
+        return self.organization
+
+
+_DEFAULT_ORGANIZATION = {"id": "org-prod", "name": "Celesto prod"}
+
+
 class _FakeClient:
-    def __init__(self) -> None:
+    def __init__(self, organization: dict[str, str] | None = _DEFAULT_ORGANIZATION):
         self.computers = _FakeComputers()
+        self.organizations = _FakeOrganizations(organization)
 
     def __enter__(self) -> "_FakeClient":
         return self
@@ -330,3 +352,94 @@ def test_computer_port_unpublish_json(monkeypatch):
     payload = json.loads(result.output)
     assert payload["status"] == "unpublished"
     assert fake_client.computers.calls == [("unpublish", "cmp_123", 8000)]
+
+
+# --- Destructive commands name the target organization ---------------------
+#
+# An API key is bound to one organization, and a .env in the working directory
+# can silently change which one. Deleting is irreversible, so the confirmation
+# has to say which tenant is about to lose the computer.
+
+
+def test_delete_confirmation_names_the_target_organization(monkeypatch):
+    runner = CliRunner()
+    fake_client = _FakeClient({"id": "org-prod", "name": "Celesto prod"})
+    monkeypatch.setattr(computer, "_get_client", lambda api_key=None: fake_client)
+
+    result = runner.invoke(computer.app, ["delete", "curie"], input="y\n")
+
+    assert result.exit_code == 0
+    assert "Celesto prod (org-prod)" in result.output
+    assert fake_client.organizations.calls == ["active"]
+    assert ("delete", "curie") in fake_client.computers.calls
+
+
+def test_delete_aborts_without_calling_the_api(monkeypatch):
+    runner = CliRunner()
+    fake_client = _FakeClient()
+    monkeypatch.setattr(computer, "_get_client", lambda api_key=None: fake_client)
+
+    result = runner.invoke(computer.app, ["delete", "curie"], input="n\n")
+
+    assert result.exit_code != 0
+    assert ("delete", "curie") not in fake_client.computers.calls
+
+
+def test_delete_force_skips_prompt_and_org_lookup(monkeypatch):
+    runner = CliRunner()
+    fake_client = _FakeClient()
+    monkeypatch.setattr(computer, "_get_client", lambda api_key=None: fake_client)
+
+    result = runner.invoke(computer.app, ["delete", "curie", "--force"])
+
+    assert result.exit_code == 0
+    # --force is the scripted path: it must not pay for an extra API round trip.
+    assert fake_client.organizations.calls == []
+    assert ("delete", "curie") in fake_client.computers.calls
+
+
+def test_stop_names_the_target_organization(monkeypatch):
+    runner = CliRunner()
+    fake_client = _FakeClient({"id": "org-prod", "name": "Celesto prod"})
+    monkeypatch.setattr(computer, "_get_client", lambda api_key=None: fake_client)
+
+    result = runner.invoke(computer.app, ["stop", "curie"])
+
+    assert result.exit_code == 0
+    assert "Celesto prod (org-prod)" in result.output
+
+
+def test_stop_json_output_stays_clean(monkeypatch):
+    runner = CliRunner()
+    fake_client = _FakeClient()
+    monkeypatch.setattr(computer, "_get_client", lambda api_key=None: fake_client)
+
+    result = runner.invoke(computer.app, ["stop", "curie", "--json"])
+
+    assert result.exit_code == 0
+    json.loads(result.output)
+    assert fake_client.organizations.calls == []
+
+
+def test_stop_falls_back_when_organization_is_unknown(monkeypatch):
+    runner = CliRunner()
+    fake_client = _FakeClient(organization=None)
+    monkeypatch.setattr(computer, "_get_client", lambda api_key=None: fake_client)
+
+    result = runner.invoke(computer.app, ["stop", "curie"])
+
+    assert result.exit_code == 0
+    assert "Computer curie is being stopped." in result.output
+
+
+def test_delete_prompt_omits_organization_when_unknown(monkeypatch):
+    runner = CliRunner()
+    fake_client = _FakeClient(organization=None)
+    monkeypatch.setattr(computer, "_get_client", lambda api_key=None: fake_client)
+
+    result = runner.invoke(computer.app, ["delete", "curie"], input="y\n")
+
+    assert result.exit_code == 0
+    # Never name an organization we could not actually determine.
+    assert "unknown" not in result.output
+    assert "Delete computer curie?" in result.output

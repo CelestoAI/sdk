@@ -113,7 +113,9 @@ def test_get_api_key_uses_saved_key_after_env_and_dotenv_miss(
 ):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CELESTO_API_KEY", raising=False)
-    monkeypatch.setattr("celesto.deployment.load_api_key", lambda: "stored-key")
+    monkeypatch.setattr(
+        auth, "load_api_key_with_store", lambda base_url=None: ("stored-key", "keyring")
+    )
 
     assert _get_api_key() == "stored-key"
     captured = capsys.readouterr()
@@ -123,7 +125,9 @@ def test_get_api_key_uses_saved_key_after_env_and_dotenv_miss(
 
 def test_get_api_key_prefers_explicit_value_over_saved_key(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("celesto.deployment.load_api_key", lambda: "stored-key")
+    monkeypatch.setattr(
+        auth, "load_api_key_with_store", lambda base_url=None: ("stored-key", "keyring")
+    )
 
     assert _get_api_key(api_key="explicit-key") == "explicit-key"
 
@@ -154,9 +158,14 @@ def test_login_validates_and_saves_key(monkeypatch):
     ]
 
 
-def test_status_reports_missing_saved_key(monkeypatch):
+def test_status_reports_missing_saved_key(monkeypatch, tmp_path):
     runner = CliRunner()
-    monkeypatch.setattr(auth, "load_api_key", lambda base_url=None: None)
+    # chdir away from the repo: a stray .env would otherwise supply a real key.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CELESTO_API_KEY", raising=False)
+    monkeypatch.setattr(
+        auth, "load_api_key_with_store", lambda base_url=None: (None, None)
+    )
 
     result = runner.invoke(auth.app, ["status"])
 
@@ -198,3 +207,197 @@ def test_logout_removes_saved_key(monkeypatch):
     assert result.exit_code == 0
     assert deleted == ["https://api.example.test/v1"]
     assert "Removed your saved Celesto API key" in result.output
+
+
+# --- Credential provenance -------------------------------------------------
+#
+# API keys are bound to a single organization, so the *source* a key is
+# resolved from decides which tenant a command touches. A .env file in the
+# working directory outranks a saved login, which means the same command run
+# from two directories can hit two different organizations.
+
+
+def _write_env_file(tmp_path, key: str) -> None:
+    (tmp_path / ".env").write_text(f"CELESTO_API_KEY={key}\n", encoding="utf-8")
+
+
+def test_resolve_cli_credential_prefers_argument(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    _write_env_file(tmp_path, "dotenv-key")
+    monkeypatch.setenv("CELESTO_API_KEY", "env-key")
+
+    resolved = auth.resolve_cli_credential(api_key="explicit-key")
+
+    assert resolved.api_key == "explicit-key"
+    assert resolved.origin == "argument"
+    assert resolved.describe_source() == "the --api-key option"
+
+
+def test_resolve_cli_credential_prefers_env_var_over_env_file(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    _write_env_file(tmp_path, "dotenv-key")
+    monkeypatch.setenv("CELESTO_API_KEY", "env-key")
+
+    resolved = auth.resolve_cli_credential()
+
+    assert resolved.api_key == "env-key"
+    assert resolved.origin == "environment"
+
+
+def test_resolve_cli_credential_env_file_outranks_saved_login(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CELESTO_API_KEY", raising=False)
+    _write_env_file(tmp_path, "dotenv-key")
+    monkeypatch.setattr(
+        auth, "load_api_key_with_store", lambda base_url=None: ("saved-key", "keyring")
+    )
+
+    resolved = auth.resolve_cli_credential()
+
+    assert resolved.api_key == "dotenv-key"
+    assert resolved.origin == "env_file"
+
+
+def test_env_file_override_warns_and_names_the_file(monkeypatch, tmp_path, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CELESTO_API_KEY", raising=False)
+    _write_env_file(tmp_path, "dotenv-key")
+    monkeypatch.setattr(
+        auth, "load_api_key_with_store", lambda base_url=None: ("saved-key", "keyring")
+    )
+    monkeypatch.setattr(auth, "_ENV_FILE_OVERRIDE_WARNED", False)
+
+    auth.resolve_cli_credential()
+
+    captured = capsys.readouterr()
+    # The warning must go to stderr so `--json` output stays machine-parseable.
+    assert "overrides your saved login" in captured.err
+    assert ".env" in captured.err
+    assert captured.out == ""
+
+
+def test_no_warning_when_env_file_matches_saved_login(monkeypatch, tmp_path, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CELESTO_API_KEY", raising=False)
+    _write_env_file(tmp_path, "same-key")
+    monkeypatch.setattr(
+        auth, "load_api_key_with_store", lambda base_url=None: ("same-key", "keyring")
+    )
+    monkeypatch.setattr(auth, "_ENV_FILE_OVERRIDE_WARNED", False)
+
+    auth.resolve_cli_credential()
+
+    assert "overrides your saved login" not in capsys.readouterr().err
+
+
+def test_no_warning_when_no_saved_login_exists(monkeypatch, tmp_path, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CELESTO_API_KEY", raising=False)
+    _write_env_file(tmp_path, "dotenv-key")
+    monkeypatch.setattr(
+        auth, "load_api_key_with_store", lambda base_url=None: (None, None)
+    )
+    monkeypatch.setattr(auth, "_ENV_FILE_OVERRIDE_WARNED", False)
+
+    auth.resolve_cli_credential()
+
+    assert "overrides your saved login" not in capsys.readouterr().err
+
+
+def test_resolve_cli_credential_falls_back_to_saved_login(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CELESTO_API_KEY", raising=False)
+    monkeypatch.setattr(
+        auth, "load_api_key_with_store", lambda base_url=None: ("saved-key", "file")
+    )
+
+    resolved = auth.resolve_cli_credential()
+
+    assert resolved.api_key == "saved-key"
+    assert resolved.origin == "saved"
+    assert resolved.describe_source() == "your saved login (credentials file)"
+
+
+def test_load_api_key_with_store_reports_keyring(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr(
+        auth.keyring, "get_password", lambda service, account: "stored-key"
+    )
+
+    assert auth.load_api_key_with_store("https://api.example.test/v1") == (
+        "stored-key",
+        "keyring",
+    )
+
+
+def test_load_api_key_with_store_reports_file_when_keyring_unavailable(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+
+    def raise_keyring_error(service: str, account: str) -> str:
+        raise KeyringError("no keyring")
+
+    monkeypatch.setattr(auth.keyring, "get_password", raise_keyring_error)
+    credentials_dir = tmp_path / "celesto"
+    credentials_dir.mkdir(parents=True, exist_ok=True)
+    (credentials_dir / "credentials.json").write_text(
+        json.dumps({"api_key:https://api.example.test/v1": "file-key"}),
+        encoding="utf-8",
+    )
+
+    assert auth.load_api_key_with_store("https://api.example.test/v1") == (
+        "file-key",
+        "file",
+    )
+
+
+# --- Status output ---------------------------------------------------------
+
+
+def test_status_shows_source_and_organization(monkeypatch, tmp_path):
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CELESTO_API_KEY", raising=False)
+    monkeypatch.setattr(
+        auth, "load_api_key_with_store", lambda base_url=None: ("saved-key", "keyring")
+    )
+    monkeypatch.setattr(
+        auth,
+        "resolve_active_organization",
+        lambda api_key, base_url=None: {"id": "org-1", "name": "Celesto prod"},
+    )
+
+    result = runner.invoke(auth.app, ["status"])
+
+    assert result.exit_code == 0
+    assert "your saved login (system keyring)" in result.output
+    assert "Celesto prod (org-1)" in result.output
+
+
+def test_status_flags_env_file_override_with_both_organizations(monkeypatch, tmp_path):
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CELESTO_API_KEY", raising=False)
+    _write_env_file(tmp_path, "dotenv-key")
+    monkeypatch.setattr(
+        auth, "load_api_key_with_store", lambda base_url=None: ("saved-key", "keyring")
+    )
+    monkeypatch.setattr(auth, "_ENV_FILE_OVERRIDE_WARNED", True)
+
+    organizations = {
+        "dotenv-key": {"id": "org-personal", "name": "Aniket personal"},
+        "saved-key": {"id": "org-prod", "name": "Celesto prod"},
+    }
+    monkeypatch.setattr(
+        auth,
+        "resolve_active_organization",
+        lambda api_key, base_url=None: organizations[api_key],
+    )
+
+    result = runner.invoke(auth.app, ["status"])
+
+    assert result.exit_code == 0
+    assert "Aniket personal (org-personal)" in result.output
+    assert "overrides your saved login" in result.output
+    assert "Celesto prod (org-prod)" in result.output

@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 from typing_extensions import Annotated
 
+from .auth import describe_organization
 from .deployment import _get_api_key
 from .sdk.client import _CelestoClient
 from .sdk.exceptions import CelestoServerError
@@ -685,13 +686,19 @@ def stop_computer(
 ):
     """Stop a running computer."""
     with _get_client(api_key) as client:
+        organization = None if as_json else client.organizations.active()
         result = client.computers.stop(computer_id)
 
     if as_json:
         _print_json(result)
         return
 
-    console.print(f"[dim]Computer {computer_id} is being stopped.[/dim]")
+    if organization:
+        console.print(
+            f"[dim]Computer {computer_id} in {describe_organization(organization)} is being stopped.[/dim]"
+        )
+    else:
+        console.print(f"[dim]Computer {computer_id} is being stopped.[/dim]")
 
 
 @app.command("start")
@@ -721,12 +728,19 @@ def delete_computer(
     api_key: ApiKeyOption = None,
 ):
     """Delete a computer."""
-    if not force and not as_json:
-        confirm = typer.confirm(f"Delete computer {computer_id}?")
-        if not confirm:
-            raise typer.Abort()
-
     with _get_client(api_key) as client:
+        if not force and not as_json:
+            # API keys are bound to one organization, and a .env in the working
+            # directory can change which one. Name the target before deleting.
+            organization = client.organizations.active()
+            prompt = (
+                f"Delete computer {computer_id} in {describe_organization(organization)}?"
+                if organization
+                else f"Delete computer {computer_id}?"
+            )
+            if not typer.confirm(prompt):
+                raise typer.Abort()
+
         result = client.computers.delete(computer_id)
 
     if as_json:

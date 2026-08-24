@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Literal
 
 import keyring
 import typer
+from dotenv.main import DotEnv
 from keyring.errors import KeyringError
 from rich.console import Console
 from typing_extensions import Annotated
@@ -23,6 +25,8 @@ CREDENTIAL_STORE_PREFERENCE_KEY = "__credential_store_preference__"
 
 app = typer.Typer(help="Sign in and manage saved credentials.")
 console = Console()
+# Warnings must never land on stdout: `--json` output is parsed by scripts and agents.
+error_console = Console(stderr=True)
 
 BaseUrlOption = Annotated[
     str,
@@ -150,8 +154,15 @@ def save_api_key(
         return "file"
 
 
-def load_api_key(base_url: str | None = None) -> str | None:
-    """Load a saved API key for CLI commands."""
+def load_api_key_with_store(
+    base_url: str | None = None,
+) -> tuple[str | None, Literal["keyring", "file"] | None]:
+    """Load a saved API key along with the store it came from.
+
+    Returns (None, None) when no key is saved. Callers that need to tell the
+    user *where* their credential came from should use this instead of
+    load_api_key().
+    """
     resolved_base_url = _resolve_base_url(base_url)
     account = _credential_account(resolved_base_url)
 
@@ -162,13 +173,14 @@ def load_api_key(base_url: str | None = None) -> str | None:
         # File was last used successfully, try file first
         file_key = _load_file_credentials().get(account)
         if file_key is not None:
-            return file_key
+            return file_key, "file"
         # Fall back to keyring if file doesn't have it
         try:
-            return keyring.get_password(KEYRING_SERVICE, account)
+            keyring_key = keyring.get_password(KEYRING_SERVICE, account)
         except KeyringError:
             # The file preference is already missing; treat keyring failure as no saved key.
-            return None
+            return None, None
+        return (keyring_key, "keyring") if keyring_key is not None else (None, None)
 
     # No preference or keyring preference: try keyring first
     try:
@@ -177,12 +189,160 @@ def load_api_key(base_url: str | None = None) -> str | None:
             account,
         )
         if saved_api_key is not None:
-            return saved_api_key
+            return saved_api_key, "keyring"
     except KeyringError:
         # Missing or unavailable keyring is expected on headless Linux; try file storage next.
         pass
 
-    return _load_file_credentials().get(account)
+    file_key = _load_file_credentials().get(account)
+    return (file_key, "file") if file_key is not None else (None, None)
+
+
+def load_api_key(base_url: str | None = None) -> str | None:
+    """Load a saved API key for CLI commands."""
+    api_key, _ = load_api_key_with_store(base_url)
+    return api_key
+
+
+def resolve_active_organization(
+    api_key: str, base_url: str | None = None
+) -> dict[str, str | None] | None:
+    """Resolve the organization an API key acts on.
+
+    Returns None when the organization cannot be determined (offline, revoked
+    key, or an organization with no projects).
+    """
+    try:
+        client = _CelestoClient(api_key=api_key, base_url=_resolve_base_url(base_url))
+    except Exception:
+        return None
+    try:
+        return client.organizations.active()
+    except Exception:
+        return None
+    finally:
+        client.close()
+
+
+def describe_organization(organization: dict[str, str | None] | None) -> str:
+    """Render an organization for display in prompts and status output."""
+    if not organization:
+        return "unknown"
+    name = organization.get("name")
+    organization_id = organization.get("id")
+    if name and organization_id:
+        return f"{name} ({organization_id})"
+    return name or organization_id or "unknown"
+
+
+CredentialOrigin = Literal["argument", "environment", "env_file", "saved"]
+
+_ENV_FILE_OVERRIDE_WARNED = False
+
+
+@dataclass(frozen=True)
+class ResolvedCredential:
+    """An API key plus the source it was resolved from."""
+
+    api_key: str
+    origin: CredentialOrigin
+    env_file_path: Path | None = None
+    saved_store: Literal["keyring", "file"] | None = None
+
+    def describe_source(self) -> str:
+        """Render the credential's source for status output and warnings."""
+        if self.origin == "argument":
+            return "the --api-key option"
+        if self.origin == "environment":
+            return "the CELESTO_API_KEY environment variable"
+        if self.origin == "env_file":
+            return f"the .env file at {self.env_file_path}"
+        if self.saved_store == "file":
+            return "your saved login (credentials file)"
+        return "your saved login (system keyring)"
+
+
+def _read_env_file_key(
+    env_file: str | None = None, secret_name: str | None = None
+) -> tuple[str | None, Path]:
+    """Read an API key from a .env file, returning the key and the path tried."""
+    dotenv_path = Path(env_file or ".env")
+    dot_env = DotEnv(dotenv_path, verbose=False, encoding="utf-8")
+    return dot_env.get(secret_name or "CELESTO_API_KEY"), dotenv_path
+
+
+def _warn_if_env_file_overrides_saved_login(resolved: ResolvedCredential) -> None:
+    """Tell the user when a .env file silently outranks their saved login.
+
+    API keys are bound to a single organization, so a stray .env in the working
+    directory can point an otherwise identical command at a different tenant.
+    Warn once per process, on stderr, and keep it network-free so it costs
+    nothing on the hot path.
+    """
+    global _ENV_FILE_OVERRIDE_WARNED
+
+    if resolved.origin != "env_file" or _ENV_FILE_OVERRIDE_WARNED:
+        return
+
+    saved_key, _ = load_api_key_with_store()
+    if saved_key is None or saved_key == resolved.api_key:
+        return
+
+    _ENV_FILE_OVERRIDE_WARNED = True
+    env_path = resolved.env_file_path
+    resolved_path = env_path.resolve() if env_path is not None else Path(".env")
+    error_console.print(
+        f"[yellow]Warning:[/yellow] using the Celesto API key from {resolved_path}, "
+        "which overrides your saved login."
+    )
+    error_console.print(
+        "[dim]The two keys may target different organizations. "
+        "Run `celesto auth status` to see which one this command uses.[/dim]"
+    )
+
+
+def resolve_cli_credential(
+    api_key: str | None = None,
+    ignore_env_file: bool | None = False,
+    secret_name: str | None = None,
+    warn_on_env_file_override: bool = True,
+) -> ResolvedCredential | None:
+    """Resolve the API key a CLI command will use, and where it came from.
+
+    Precedence is unchanged: explicit argument, then CELESTO_API_KEY, then a
+    .env file in the current working directory, then the saved login. Returns
+    None when no key is found anywhere.
+
+    Set warn_on_env_file_override=False when the caller prints its own, fuller
+    explanation of the override (as `celesto auth status` does).
+    """
+    if api_key:
+        return ResolvedCredential(api_key=api_key, origin="argument")
+
+    env_key = os.environ.get(secret_name or "CELESTO_API_KEY")
+    if env_key:
+        return ResolvedCredential(api_key=env_key, origin="environment")
+
+    if not ignore_env_file:
+        env_file_key, env_file_path = _read_env_file_key(secret_name=secret_name)
+        if env_file_key:
+            resolved = ResolvedCredential(
+                api_key=env_file_key,
+                origin="env_file",
+                env_file_path=env_file_path,
+            )
+            if warn_on_env_file_override:
+                _warn_if_env_file_overrides_saved_login(resolved)
+            return resolved
+
+    if (secret_name or "CELESTO_API_KEY") == "CELESTO_API_KEY":
+        saved_key, saved_store = load_api_key_with_store()
+        if saved_key:
+            return ResolvedCredential(
+                api_key=saved_key, origin="saved", saved_store=saved_store
+            )
+
+    return None
 
 
 def delete_api_key(base_url: str | None = None) -> None:
@@ -275,15 +435,40 @@ def login(
 
 @app.command("status")
 def status(base_url: BaseUrlOption = DEFAULT_BASE_URL):
-    """Show whether a Celesto API key is saved."""
+    """Show which API key CLI commands use, and the organization it targets."""
     resolved_base_url = _resolve_base_url(base_url)
-    if load_api_key(resolved_base_url):
-        console.print(
-            f"A Celesto API key is saved for {resolved_base_url}. Run celesto auth logout to remove it."
-        )
+    resolved = resolve_cli_credential(warn_on_env_file_override=False)
+
+    if resolved is None:
+        console.print("No saved API key was found. Run celesto auth login.")
         return
 
-    console.print("No saved API key was found. Run celesto auth login.")
+    console.print(f"API URL:      {resolved_base_url}")
+    console.print(f"Credential:   {resolved.describe_source()}")
+
+    organization = resolve_active_organization(resolved.api_key, resolved_base_url)
+    console.print(f"Organization: {describe_organization(organization)}")
+
+    if resolved.origin == "env_file":
+        saved_key, saved_store = load_api_key_with_store(resolved_base_url)
+        if saved_key is not None and saved_key != resolved.api_key:
+            store_label = (
+                "credentials file" if saved_store == "file" else "system keyring"
+            )
+            console.print()
+            console.print(
+                f"[yellow]This .env key overrides your saved login ({store_label}).[/yellow]"
+            )
+            saved_organization = resolve_active_organization(
+                saved_key, resolved_base_url
+            )
+            console.print(
+                f"[dim]Your saved login targets {describe_organization(saved_organization)}.[/dim]"
+            )
+            console.print(
+                "[dim]Commands run from this directory use the .env key. "
+                "Run from another directory, or pass --api-key, to use your saved login.[/dim]"
+            )
 
 
 @app.command("token", hidden=True)

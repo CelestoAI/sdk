@@ -10,22 +10,10 @@ from dotenv.main import DotEnv
 from rich.console import Console
 from typing_extensions import Annotated
 
-from .auth import load_api_key
+from .auth import ResolvedCredential, resolve_cli_credential
 from .sdk.client import _CelestoClient
 
 console = Console()
-
-
-def _get_secrets_from_env_file(
-    env_file: Optional[str] = None, secret_name: Optional[str] = None
-) -> Optional[str]:
-    if not env_file:
-        env_file = ".env"
-    if not secret_name:
-        secret_name = "CELESTO_API_KEY"
-    dotenv_path = Path(env_file)
-    dot_env = DotEnv(dotenv_path, verbose=False, encoding="utf-8")
-    return dot_env.get(secret_name)
 
 
 def _get_api_key(
@@ -33,16 +21,21 @@ def _get_api_key(
     ignore_env_file: Optional[bool] = False,
     secret_name: Optional[str] = None,
 ) -> str:
-    """Get API key from argument, env var, or .env file."""
-    final_api_key = api_key or os.environ.get(secret_name or "CELESTO_API_KEY")
-    if not final_api_key and not ignore_env_file:
-        final_api_key = _get_secrets_from_env_file(secret_name=secret_name)
-    if not final_api_key and (secret_name or "CELESTO_API_KEY") == "CELESTO_API_KEY":
-        final_api_key = load_api_key()
-    if not final_api_key:
+    """Get API key from argument, env var, .env file, or saved login."""
+    return _resolve_api_key(api_key, ignore_env_file, secret_name).api_key
+
+
+def _resolve_api_key(
+    api_key: Optional[str] = None,
+    ignore_env_file: Optional[bool] = False,
+    secret_name: Optional[str] = None,
+) -> ResolvedCredential:
+    """Resolve the API key along with the source it came from."""
+    resolved = resolve_cli_credential(api_key, ignore_env_file, secret_name)
+    if resolved is None:
         console.print("No Celesto API key was found. Run celesto auth login.")
         raise typer.Exit(1)
-    return final_api_key
+    return resolved
 
 
 def _resolve_envs(
