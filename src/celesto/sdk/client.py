@@ -13,6 +13,7 @@ import pathspec
 from .base import _BASE_URL, _BaseClient, _BaseConnection
 from .computer import resolve_disk_size_mb
 from .exceptions import (
+    CelestoError,
     CelestoServerError,
     CelestoValidationError,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "Computers",
     "Deployment",
     "GateKeeper",
+    "Organizations",
     "_BaseClient",
     "_BaseConnection",
     "_CelestoClient",
@@ -987,6 +989,67 @@ class Computers(_BaseClient):
         return self._request("DELETE", f"/computers/{computer_id}")
 
 
+class Organizations(_BaseClient):
+    """Read-only view of the organization the current API key acts on."""
+
+    def get(self, organization_id: str) -> dict[str, Any]:
+        """Fetch a single organization by ID.
+
+        Args:
+            organization_id: ID of the organization to fetch.
+
+        Returns:
+            The organization record as returned by the API.
+
+        Raises:
+            CelestoAuthenticationError: If the key may not read the organization.
+            CelestoNotFoundError: If no organization has that ID.
+            CelestoServerError: If the API fails to answer.
+        """
+        return self._request("GET", f"/organizations/{organization_id}")
+
+    def active(self) -> dict[str, Any] | None:
+        """Resolve the organization this API key is bound to.
+
+        API keys are bound to exactly one organization, but the API has no
+        whoami endpoint, and ``GET /organizations/`` lists every organization
+        the owning *user* belongs to rather than the one the key acts on. Read
+        the bound organization back off a project instead: project listings are
+        already scoped to the key's organization.
+
+        Returns:
+            A mapping with "id" and "name" for the bound organization, or None
+            when it cannot be determined: the projects request failed, the
+            organization has no projects, or the project carries no
+            organization ID. When the project lookup succeeds but fetching the
+            organization fails, "name" is None and only "id" is populated.
+
+        Note:
+            Never raises. Callers use this to label output, so a failure to
+            resolve degrades to None rather than breaking the command.
+        """
+        try:
+            response = self._request(
+                "GET", "/projects/", params={"skip": 0, "limit": 1}
+            )
+        except CelestoError:
+            return None
+
+        projects = response.get("data") or []
+        if not projects:
+            return None
+
+        organization_id = projects[0].get("organization_id")
+        if not organization_id:
+            return None
+
+        try:
+            organization = self.get(organization_id)
+        except CelestoError:
+            return {"id": organization_id, "name": None}
+        return {"id": organization_id, "name": organization.get("name")}
+
+
 class _CelestoClient(_BaseConnection):
     """Internal service client used by the CLI and high-level resource classes.
 
@@ -1036,6 +1099,7 @@ class _CelestoClient(_BaseConnection):
         self.deployment = Deployment(self)
         self.gatekeeper = GateKeeper(self)
         self.computers = Computers(self)
+        self.organizations = Organizations(self)
         # Managed agents: agents you define once and run for your end users.
         self.agents = Agents(self)
         self.runs = Runs(self)
