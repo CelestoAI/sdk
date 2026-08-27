@@ -63,7 +63,13 @@ def test_computer_convenience_api_creates_and_supports_mapping_access():
     client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
     client.session = session
 
-    computer = Computer(cpus=1, memory=512, disk="2gb", client=client)
+    computer = Computer(
+        cpus=1,
+        memory=512,
+        disk="2gb",
+        persistent_home=True,
+        client=client,
+    )
 
     assert computer.name == "curie"
     assert computer["name"] == "curie"
@@ -72,6 +78,7 @@ def test_computer_convenience_api_creates_and_supports_mapping_access():
         "vcpus": 1,
         "ram_mb": 512,
         "disk_size_mb": 2048,
+        "external_volume_enabled": True,
     }
 
 
@@ -215,6 +222,7 @@ def test_computers_create_sends_only_explicit_overrides():
     result = client.computers.create(
         template_id="coding-agent",
         disk_size_mb=15360,
+        persistent_home=True,
     )
 
     assert result["template_id"] == "coding-agent"
@@ -223,6 +231,7 @@ def test_computers_create_sends_only_explicit_overrides():
     assert session.calls[0]["json"] == {
         "disk_size_mb": 15360,
         "template_id": "coding-agent",
+        "external_volume_enabled": True,
     }
     assert session.calls[0]["timeout"].read == 600
     assert session.timeout.read == 120
@@ -236,6 +245,16 @@ def test_computers_create_with_no_args_uses_backend_defaults():
     client.computers.create()
 
     assert session.calls[0]["json"] == {}
+
+
+def test_computers_create_can_explicitly_disable_persistent_home():
+    session = DummySession(status_code=201, payload={})
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    client.computers.create(persistent_home=False)
+
+    assert session.calls[0]["json"] == {"external_volume_enabled": False}
 
 
 def test_computers_create_rejects_conflicting_aliases():

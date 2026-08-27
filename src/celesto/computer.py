@@ -340,6 +340,13 @@ def create_computer(
         Optional[str],
         typer.Option("--image", help="Legacy image selector"),
     ] = None,
+    persistent_home: Annotated[
+        bool,
+        typer.Option(
+            "--persistent-home",
+            help="Keep /home/ohm across stop and restore; cannot be changed later",
+        ),
+    ] = False,
     as_json: JsonOption = False,
     api_key: ApiKeyOption = None,
 ):
@@ -354,6 +361,7 @@ def create_computer(
             template_id=template_id,
             template_version=template_version,
             image=image,
+            persistent_home=persistent_home,
         )
 
     if as_json:

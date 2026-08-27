@@ -43,6 +43,7 @@ interface ComputerInfoWire {
   image: string;
   template_id: string;
   template_version?: string | null;
+  external_volume_enabled?: boolean;
   connection?: ComputerConnectionInfoWire | null;
   published_ports?: ComputerPublishedPortInfoWire[];
   last_error?: string | null;
@@ -136,6 +137,7 @@ const toComputerInfo = (payload: ComputerInfoWire): ComputerInfo => ({
   image: payload.image,
   templateId: payload.template_id,
   templateVersion: payload.template_version ?? null,
+  persistentHome: payload.external_volume_enabled ?? false,
   connection: toConnection(payload.connection),
   publishedPorts: payload.published_ports?.map(toPublishedPortInfo),
   lastError: payload.last_error ?? null,
@@ -323,6 +325,9 @@ const buildCreateComputerBody = (params: CreateComputerParams): Record<string, u
   }
   if (params.templateVersion !== undefined) {
     body.template_version = params.templateVersion;
+  }
+  if (params.persistentHome !== undefined) {
+    body.external_volume_enabled = params.persistentHome;
   }
   return body;
 };

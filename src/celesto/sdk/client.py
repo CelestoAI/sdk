@@ -628,6 +628,7 @@ class Computers(_BaseClient):
         image: str | None = None,
         template_id: str | None = None,
         template_version: str | None = None,
+        persistent_home: bool | None = None,
     ) -> dict[str, Any]:
         """Create a new sandboxed computer.
 
@@ -645,6 +646,8 @@ class Computers(_BaseClient):
             template_id: Sandbox template id, such as "scratch" or
                 "coding-agent". Use this when you want preinstalled tools.
             template_version: Optional immutable template version.
+            persistent_home: Whether to keep ``/home/ohm`` across stop and
+                restore. Off by default and cannot be changed after create.
 
         Returns:
             Computer info dict with id, status, resources, template, etc.
@@ -675,6 +678,8 @@ class Computers(_BaseClient):
             payload["template_id"] = template_id
         if template_version is not None:
             payload["template_version"] = template_version
+        if persistent_home is not None:
+            payload["external_volume_enabled"] = persistent_home
 
         return self._request(
             "POST",

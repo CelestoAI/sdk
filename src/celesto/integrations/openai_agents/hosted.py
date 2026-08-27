@@ -38,6 +38,7 @@ class CelestoSandboxClientOptions(BaseSandboxClientOptions):
     image: str | None = None
     template_id: str | None = None
     template_version: str | None = None
+    persistent_home: bool | None = None
     start_timeout_seconds: float = 120
     start_poll_interval_seconds: float = 2
     delete_on_close: bool | None = None
@@ -54,6 +55,7 @@ class CelestoSandboxSessionState(SandboxSessionState):
     image: str | None = None
     template_id: str | None = None
     template_version: str | None = None
+    persistent_home: bool | None = None
     start_timeout_seconds: float = 120
     start_poll_interval_seconds: float = 2
     delete_on_close: bool = True
@@ -126,6 +128,7 @@ class CelestoSandboxSession(CommandBackedSession):
                 image=self.state.image,
                 template_id=self.state.template_id,
                 template_version=self.state.template_version,
+                persistent_home=self.state.persistent_home,
             )
             self.state.computer_id = created["id"]
             if created.get("status") != "running":
@@ -219,6 +222,7 @@ class CelestoSandboxClient(BaseSandboxClient[CelestoSandboxClientOptions | None]
             image=resolved.image,
             template_id=resolved.template_id,
             template_version=resolved.template_version,
+            persistent_home=resolved.persistent_home,
             start_timeout_seconds=resolved.start_timeout_seconds,
             start_poll_interval_seconds=resolved.start_poll_interval_seconds,
             delete_on_close=delete_on_close,

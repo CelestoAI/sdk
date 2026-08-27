@@ -41,6 +41,8 @@ export interface ComputerInfo {
   image: string;
   templateId: string;
   templateVersion?: string | null;
+  /** Whether /home/ohm survives stop and restore. */
+  persistentHome: boolean;
   connection?: ComputerConnectionInfo;
   publishedPorts?: ComputerPublishedPortInfo[];
   lastError?: string | null;
@@ -143,6 +145,8 @@ export interface CreateComputerParams {
   templateId?: string;
   /** Optional immutable template version. */
   templateVersion?: string;
+  /** Keep /home/ohm across stop and restore. Off by default and immutable after create. */
+  persistentHome?: boolean;
 }
 
 export interface ExecParams {
