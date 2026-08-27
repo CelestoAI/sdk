@@ -14,6 +14,7 @@ import {
   Computer,
   type ComputerExecResponse,
   type ComputerExecStreamEvent,
+  type CreateComputerParams,
   type ExecParams,
 } from "@celestoai/sdk";
 
@@ -155,6 +156,66 @@ test("/celesto push uploads once, persists its revision, and reports skipped fil
   } finally {
     Computer.get = originalGet;
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("extension-created computers use a persistent home", async () => {
+  const originalCreate = Computer.create;
+  try {
+    const computer = new FakeComputer();
+    let createParams: CreateComputerParams | undefined;
+    Computer.create = async (params = {}) => {
+      createParams = params;
+      return computer as unknown as Computer;
+    };
+
+    const flags = new Map<string, boolean | string | undefined>();
+    const handlers = new Map<
+      string,
+      Array<(event: unknown, ctx: ExtensionContext) => unknown>
+    >();
+    const api = {
+      registerFlag(name: string, options: { default?: boolean | string }) {
+        flags.set(name, options.default);
+      },
+      getFlag(name: string) {
+        return flags.get(name);
+      },
+      registerTool() {},
+      registerCommand() {},
+      on(
+        event: string,
+        handler: (event: unknown, ctx: ExtensionContext) => unknown,
+      ) {
+        const existing = handlers.get(event) ?? [];
+        existing.push(handler);
+        handlers.set(event, existing);
+      },
+      appendEntry() {},
+    } as unknown as ExtensionAPI;
+
+    celestoPiExtension(api);
+    flags.set("celesto", true);
+    const context = {
+      cwd: process.cwd(),
+      sessionManager: { getBranch: () => [] },
+      ui: {
+        theme: { fg: (_color: string, value: string) => value },
+        setStatus() {},
+        notify() {},
+      },
+    } as unknown as ExtensionContext;
+
+    for (const handler of handlers.get("session_start") ?? []) {
+      await handler(
+        { type: "session_start", reason: "startup" } satisfies SessionStartEvent,
+        context,
+      );
+    }
+
+    assert.deepEqual(createParams, { persistentHome: true });
+  } finally {
+    Computer.create = originalCreate;
   }
 });
 

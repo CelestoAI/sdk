@@ -40,7 +40,10 @@ From the project you want to work on, start Pi:
 pi --celesto
 ```
 
-The extension creates an empty `$HOME/workspace` on a Celesto computer and runs Pi's `read`, `write`, `edit`, and `bash` tools there. It does not copy anything from your machine automatically.
+The extension creates an empty `$HOME/workspace` on a Celesto computer and
+runs Pi's `read`, `write`, `edit`, and `bash` tools there. Computers created by
+the extension use a persistent home, so `$HOME` survives stop and restore. The
+extension does not copy anything from your machine automatically.
 
 ## Copy a project explicitly
 
