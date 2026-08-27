@@ -50,6 +50,10 @@ class _FakeComputers:
             "created_at": "2026-06-07T00:00:00Z",
         }
 
+    def create(self, **kwargs) -> dict:
+        self.calls.append(("create", kwargs))
+        return self._computer_payload()
+
     def list(
         self,
         *,
@@ -201,6 +205,33 @@ def test_computer_port_publish_prints_url(monkeypatch):
             urls.append(parsed)
     assert any(u.scheme == "https" and u.hostname == "p-test.celesto.ai" for u in urls)
     assert fake_client.computers.calls == [("publish", "curie", 8000)]
+
+
+def test_computer_create_enables_persistent_home(monkeypatch):
+    runner = CliRunner()
+    fake_client = _FakeClient()
+    monkeypatch.setattr(computer, "_get_client", lambda api_key=None: fake_client)
+
+    result = runner.invoke(
+        computer.app,
+        ["create", "--persistent-home", "--json"],
+    )
+
+    assert result.exit_code == 0
+    assert fake_client.computers.calls == [
+        (
+            "create",
+            {
+                "cpus": None,
+                "memory": None,
+                "disk_size_mb": None,
+                "template_id": None,
+                "template_version": None,
+                "image": None,
+                "persistent_home": True,
+            },
+        )
+    ]
 
 
 def test_computer_get_json(monkeypatch):

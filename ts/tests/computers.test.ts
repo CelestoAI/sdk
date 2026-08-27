@@ -70,6 +70,7 @@ describe("ComputersClient", () => {
         image: "ubuntu-desktop-24.04",
         template_id: "coding-agent",
         template_version: "latest",
+        external_volume_enabled: true,
         created_at: "2026-04-16T00:00:00Z",
         last_error: null,
         stopped_at: null,
@@ -83,6 +84,7 @@ describe("ComputersClient", () => {
       diskSizeMb: 15360,
       templateId: "coding-agent",
       templateVersion: "latest",
+      persistentHome: true,
     });
 
     assert.equal(calls.length, 1);
@@ -94,6 +96,7 @@ describe("ComputersClient", () => {
       disk_size_mb: 15360,
       template_id: "coding-agent",
       template_version: "latest",
+      external_volume_enabled: true,
     });
     assert.equal(calls[0]!.headers["authorization"], "Bearer test-token");
     assert.equal(result.id, "cmp_abc");
@@ -101,6 +104,7 @@ describe("ComputersClient", () => {
     assert.equal(result.diskSizeMb, 15360);
     assert.equal(result.templateId, "coding-agent");
     assert.equal(result.templateVersion, "latest");
+    assert.equal(result.persistentHome, true);
     assert.equal(result.lastError, null);
   });
 
@@ -124,6 +128,30 @@ describe("ComputersClient", () => {
     await client.create();
 
     assert.deepEqual(calls[0]!.body, {});
+  });
+
+  it("create() can explicitly disable a persistent home", async () => {
+    const { fetch, calls } = makeFetchMock(() => ({
+      status: 201,
+      body: {
+        id: "cmp_ephemeral",
+        name: "ephemeral",
+        status: "creating",
+        vcpus: 1,
+        ram_mb: 512,
+        disk_size_mb: 7168,
+        image: "ubuntu-desktop-24.04",
+        template_id: "scratch",
+        external_volume_enabled: false,
+        created_at: "2026-04-16T00:00:00Z",
+      },
+    }));
+    const client = new ComputersClient(makeConfig(fetch));
+
+    const result = await client.create({ persistentHome: false });
+
+    assert.deepEqual(calls[0]!.body, { external_volume_enabled: false });
+    assert.equal(result.persistentHome, false);
   });
 
   it("create() accepts friendly disk sizes", async () => {

@@ -233,6 +233,17 @@ try {
 Omit CPU, memory, or disk fields to use the default size. `disk` accepts MB as
 an integer or strings such as `"2gb"`.
 
+Computers are ephemeral by default. To keep `/home/ohm` across stop and restore,
+enable a persistent home when you create the computer:
+
+```js
+import { Computer } from "@celestoai/sdk";
+
+const computer = await Computer.create({ persistentHome: true });
+```
+
+This setting cannot be changed later.
+
 ### Templates
 
 Use a template when you want a computer that already has extra tools installed.

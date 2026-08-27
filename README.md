@@ -444,6 +444,17 @@ finally:
 Omit CPU, memory, or disk fields to use the default size. `disk` accepts MB as
 an integer or strings such as `"2gb"`.
 
+Computers are ephemeral by default. To keep `/home/ohm` across stop and restore,
+enable a persistent home when you create the computer:
+
+```python
+from celesto import Computer
+
+computer = Computer(persistent_home=True)
+```
+
+This setting cannot be changed later.
+
 ### Templates
 
 By default, Celesto uses `scratch`, a minimal Ubuntu computer. Use a template
@@ -571,7 +582,7 @@ computer.unpublish_port(8000)
 | `celesto auth login` | Save your API key for CLI commands |
 | `celesto auth status` | Check whether an API key is saved |
 | `celesto auth logout` | Remove your saved API key |
-| `celesto computer create [--cpus N] [--memory MB] [--disk-size-mb MB] [--template ID]` | Create a computer |
+| `celesto computer create [--cpus N] [--memory MB] [--disk-size-mb MB] [--template ID] [--persistent-home]` | Create a computer |
 | `celesto computer templates` | List templates with preinstalled tools |
 | `celesto computer list` | List your computers |
 | `celesto computer list [--status STATUS] [--template ID] [--project ID] [--limit N]` | List matching computers |

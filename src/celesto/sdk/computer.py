@@ -125,6 +125,7 @@ class Computer(MutableMapping[str, Any]):
         image: str | None = None,
         template_id: str | None = None,
         template_version: str | None = None,
+        persistent_home: bool | None = None,
         api_key: str | None = None,
         base_url: str | None = None,
         client: Any | None = None,
@@ -143,6 +144,7 @@ class Computer(MutableMapping[str, Any]):
             image=image,
             template_id=template_id,
             template_version=template_version,
+            persistent_home=persistent_home,
         )
 
     @classmethod
