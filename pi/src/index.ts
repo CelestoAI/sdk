@@ -93,6 +93,10 @@ export function assertSafeLocalRoot(localRoot: string): void {
   );
 }
 
+async function createExtensionComputer(): Promise<Computer> {
+  return Computer.create({ persistentHome: true });
+}
+
 async function ensureComputerRunning(computer: Computer): Promise<void> {
   const terminalStatuses: ComputerStatus[] = ["deleted", "deleting", "error"];
   if (terminalStatuses.includes(computer.status)) {
@@ -195,19 +199,19 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
     } else if (saved) {
       const forkNeedsOwnComputer = event.reason === "fork" && saved.owned;
       if (forkNeedsOwnComputer) {
-        computer = await Computer.create();
+        computer = await createExtensionComputer();
         owned = true;
       } else {
         let restored = true;
         try {
           computer = await Computer.get(saved.computerId);
         } catch {
-          computer = await Computer.create();
+          computer = await createExtensionComputer();
           owned = true;
           restored = false;
         }
         if (["deleted", "deleting", "error"].includes(computer.status)) {
-          computer = await Computer.create();
+          computer = await createExtensionComputer();
           owned = true;
           restored = false;
         }
@@ -218,7 +222,7 @@ export default function celestoPiExtension(pi: ExtensionAPI): void {
         }
       }
     } else {
-      computer = await Computer.create();
+      computer = await createExtensionComputer();
       owned = true;
     }
 
