@@ -37,6 +37,13 @@ def test_top_level_sdk_exports_new_computer_api_only():
     assert not hasattr(celesto, "Celesto")
     assert not hasattr(public_sdk, "Celesto")
     assert not hasattr(internal_client, "Celesto")
+    assert public_sdk.ComputerBrowserConnectionInfo.__name__ == (
+        "ComputerBrowserConnectionInfo"
+    )
+    assert public_sdk.ComputerDisplayConnectionInfo.__name__ == (
+        "ComputerDisplayConnectionInfo"
+    )
+    assert public_sdk.DisplayConnectionMode is not None
 
 
 def test_internal_client_still_supports_cli_service_operations():
@@ -427,6 +434,125 @@ def test_terminal_session_rejects_incomplete_backend_response():
 
     with pytest.raises(CelestoServerError, match="terminal connection details"):
         client.computers.create_terminal_session("cmp_123")
+
+
+def test_computer_creates_browser_and_display_connections():
+    session = DummySession(
+        status_code=201,
+        payload={
+            "id": "cmp_1",
+            "name": "curie",
+            "status": "running",
+            "vcpus": 1,
+            "ram_mb": 512,
+            "disk_size_mb": 2048,
+            "image": "ubuntu-desktop-24.04",
+            "template_id": "browser-agent",
+            "created_at": "2026-09-17T12:00:00Z",
+        },
+    )
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+    computer = Computer(client=client)
+    session.payload = {
+        "gateway_url": "wss://gateway.example/v1/browsers/cmp_1/connect?region=us",
+        "token": "browser token",
+        "expires_at": "2026-09-17T12:01:00Z",
+    }
+
+    result = computer.create_browser_connection()
+
+    assert session.calls[1]["method"] == "POST"
+    assert session.calls[1]["url"] == (
+        "https://api.example.test/v1/computers/cmp_1/browser"
+    )
+    assert result == {
+        "gateway_url": "wss://gateway.example/v1/browsers/cmp_1/connect?region=us",
+        "url": (
+            "wss://gateway.example/v1/browsers/cmp_1/connect"
+            "?region=us&token=browser+token"
+        ),
+        "token": "browser token",
+        "expires_at": "2026-09-17T12:01:00Z",
+    }
+
+    session.payload = {
+        "gateway_url": "wss://gateway.example/v1/displays/cmp_1/connect",
+        "token": "display token",
+        "expires_at": "2026-09-17T12:01:00Z",
+        "mode": "read_write",
+    }
+
+    display = computer.create_display_connection(mode="read_write")
+
+    assert session.calls[2]["url"] == (
+        "https://api.example.test/v1/computers/cmp_1/display"
+    )
+    assert session.calls[2]["json"] == {"mode": "read_write"}
+    assert display["mode"] == "read_write"
+
+
+def test_computers_create_display_connection_with_requested_mode():
+    session = DummySession(
+        status_code=201,
+        payload={
+            "gateway_url": "wss://gateway.example/v1/displays/cmp_1/connect",
+            "token": "display token",
+            "expires_at": "2026-09-17T12:01:00Z",
+            "mode": "read_write",
+        },
+    )
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    result = client.computers.create_display_connection("cmp_1", mode="read_write")
+
+    assert session.calls[0]["method"] == "POST"
+    assert session.calls[0]["url"] == (
+        "https://api.example.test/v1/computers/cmp_1/display"
+    )
+    assert session.calls[0]["json"] == {"mode": "read_write"}
+    assert result == {
+        "gateway_url": "wss://gateway.example/v1/displays/cmp_1/connect",
+        "url": ("wss://gateway.example/v1/displays/cmp_1/connect?token=display+token"),
+        "token": "display token",
+        "expires_at": "2026-09-17T12:01:00Z",
+        "mode": "read_write",
+    }
+
+
+@pytest.mark.parametrize(
+    ("method_name", "payload", "message"),
+    [
+        (
+            "create_browser_connection",
+            {
+                "gateway_url": "wss://gateway.example/connect",
+                "token": "browser-token",
+            },
+            "browser connection details",
+        ),
+        (
+            "create_display_connection",
+            {
+                "gateway_url": "wss://gateway.example/connect",
+                "token": "display-token",
+                "expires_at": "2026-09-17T12:01:00Z",
+                "mode": "unexpected",
+            },
+            "display connection details",
+        ),
+    ],
+)
+def test_computer_connections_reject_invalid_backend_responses(
+    method_name, payload, message
+):
+    session = DummySession(status_code=201, payload=payload)
+    client = _CelestoClient("test-key", base_url="https://api.example.test/v1")
+    client.session = session
+
+    with pytest.raises(CelestoServerError, match=message):
+        getattr(client.computers, method_name)("cmp_1")
 
 
 def test_computers_list_command_history_hits_backend_endpoint():

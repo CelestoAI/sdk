@@ -16,6 +16,7 @@ export type {
 } from "./gatekeeper";
 export { Computer } from "./computers";
 export type {
+  BrowserConnectionInfo,
   ComputerCommandHistoryEntry,
   ComputerCommandHistoryResponse,
   ComputerConnectionInfo,
@@ -28,6 +29,9 @@ export type {
   ComputerStatus,
   PublishedPortStatus,
   CreateComputerParams,
+  DisplayConnectionInfo,
+  DisplayConnectionMode,
+  DisplayConnectionParams,
   ExecParams,
   ListCommandHistoryParams,
   ListComputersParams,

@@ -18,7 +18,13 @@ from .exceptions import (
     CelestoValidationError,
 )
 from .runtime.client import Agents, EndUsers, Runs, Sessions, Settings
-from .types import ComputerTerminalSessionInfo, NetworkPolicy
+from .types import (
+    ComputerBrowserConnectionInfo,
+    ComputerDisplayConnectionInfo,
+    ComputerTerminalSessionInfo,
+    DisplayConnectionMode,
+    NetworkPolicy,
+)
 
 __all__ = [
     "_BASE_URL",
@@ -37,8 +43,8 @@ __all__ = [
 _STREAM_EXEC_FOR_TIMEOUT_OVER_SECONDS = 110
 
 
-def _terminal_gateway_url(gateway_url: str, token: str) -> str:
-    """Add the short-lived terminal token to a gateway WebSocket URL."""
+def _gateway_websocket_url(gateway_url: str, token: str) -> str:
+    """Add a short-lived token to a gateway WebSocket URL."""
     parts = urlsplit(gateway_url)
     query = [
         (key, value)
@@ -787,7 +793,73 @@ class Computers(_BaseClient):
             "gateway_url": gateway_url,
             "token": token,
             "expires_at": expires_at,
-            "url": _terminal_gateway_url(gateway_url, token),
+            "url": _gateway_websocket_url(gateway_url, token),
+        }
+
+    def create_browser_connection(
+        self, computer_id: str
+    ) -> ComputerBrowserConnectionInfo:
+        """Create a short-lived CDP connection for browser automation."""
+        connection = self._request("POST", f"/computers/{computer_id}/browser")
+        gateway_url = (
+            connection.get("gateway_url") if isinstance(connection, dict) else None
+        )
+        token = connection.get("token") if isinstance(connection, dict) else None
+        expires_at = (
+            connection.get("expires_at") if isinstance(connection, dict) else None
+        )
+        if (
+            not isinstance(gateway_url, str)
+            or not isinstance(token, str)
+            or not isinstance(expires_at, str)
+        ):
+            raise CelestoServerError(
+                "Celesto did not return browser connection details. "
+                "Call create_browser_connection() again."
+            )
+        return {
+            "gateway_url": gateway_url,
+            "token": token,
+            "expires_at": expires_at,
+            "url": _gateway_websocket_url(gateway_url, token),
+        }
+
+    def create_display_connection(
+        self,
+        computer_id: str,
+        *,
+        mode: DisplayConnectionMode = "read_only",
+    ) -> ComputerDisplayConnectionInfo:
+        """Create a short-lived RFB connection to a graphical display."""
+        connection = self._request(
+            "POST",
+            f"/computers/{computer_id}/display",
+            json_body={"mode": mode},
+        )
+        gateway_url = (
+            connection.get("gateway_url") if isinstance(connection, dict) else None
+        )
+        token = connection.get("token") if isinstance(connection, dict) else None
+        expires_at = (
+            connection.get("expires_at") if isinstance(connection, dict) else None
+        )
+        response_mode = connection.get("mode") if isinstance(connection, dict) else None
+        if (
+            not isinstance(gateway_url, str)
+            or not isinstance(token, str)
+            or not isinstance(expires_at, str)
+            or response_mode not in ("read_only", "read_write")
+        ):
+            raise CelestoServerError(
+                "Celesto did not return display connection details. "
+                "Call create_display_connection() again."
+            )
+        return {
+            "gateway_url": gateway_url,
+            "token": token,
+            "expires_at": expires_at,
+            "url": _gateway_websocket_url(gateway_url, token),
+            "mode": response_mode,
         }
 
     def publish_port(self, computer_id: str, port: int = 8000) -> dict[str, Any]:

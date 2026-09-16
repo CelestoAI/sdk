@@ -2,6 +2,7 @@ import { resolveClientConfig } from "../core/auth";
 import { ClientConfig } from "../core/config";
 import { ComputersClient } from "./client";
 import {
+  BrowserConnectionInfo,
   ComputerCommandHistoryResponse,
   ComputerConnectionInfo,
   ComputerExecResponse,
@@ -10,6 +11,8 @@ import {
   ComputerPublishedPortInfo,
   ComputerStatus,
   CreateComputerParams,
+  DisplayConnectionInfo,
+  DisplayConnectionParams,
   ExecParams,
   ListCommandHistoryParams,
   ListComputersParams,
@@ -171,6 +174,18 @@ export class Computer {
   /** Create a short-lived direct connection to Celesto's terminal gateway. */
   async createTerminalSession(): Promise<TerminalSessionInfo> {
     return this.client.createTerminalSession(this.id);
+  }
+
+  /** Create a short-lived CDP connection for browser automation. */
+  async createBrowserConnection(): Promise<BrowserConnectionInfo> {
+    return this.client.createBrowserConnection(this.id);
+  }
+
+  /** Create a short-lived RFB connection to watch or control the graphical display. */
+  async createDisplayConnection(
+    params: DisplayConnectionParams = {},
+  ): Promise<DisplayConnectionInfo> {
+    return this.client.createDisplayConnection(this.id, params);
   }
 
   /** @deprecated Use createTerminalSession(). */
