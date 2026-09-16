@@ -348,6 +348,9 @@ shown by the Celesto command-line tool: `celesto computer list`.
 | `Computer.list()` | List computers in your account |
 | `Computer.get(computerId)` | Get one computer by name or ID |
 | `computer.listCommandHistory()` | List recent commands and their status |
+| `computer.createTerminalSession()` | Create a short-lived fast terminal connection |
+| `computer.createBrowserConnection()` | Create a short-lived CDP connection to browser-agent Chromium |
+| `computer.createDisplayConnection({ mode: "read_only" })` | Create a short-lived RFB display connection |
 | `computer.stop()` | Stop a running computer |
 | `computer.start()` | Start a stopped computer |
 | `computer.delete()` | Delete a computer |
@@ -403,6 +406,60 @@ ws.on("open", () => ws.send("pwd\n"));
 
 `connection.url` contains a short-lived terminal token. Treat it as a secret and
 create a new terminal session after `connection.expiresAt`.
+
+### Browser Automation Connections
+
+Use the `browser-agent` template when your application needs an existing
+Chromium browser. `createBrowserConnection()` returns a short-lived Chrome
+DevTools Protocol (CDP) WebSocket URL that Playwright can attach to.
+
+Install Playwright Core in the application that runs this code:
+
+```bash
+npm install playwright-core
+```
+
+Then connect to the browser already running in the Celesto computer:
+
+```js
+import { Computer } from "@celestoai/sdk";
+import { chromium } from "playwright-core";
+
+const computer = await Computer.create({ templateId: "browser-agent" });
+try {
+  const connection = await computer.createBrowserConnection();
+  const browser = await chromium.connectOverCDP(connection.url);
+  const context = browser.contexts()[0];
+  if (!context) throw new Error("Celesto browser did not provide a context");
+  const pages = context.pages();
+  const page = pages[0] ?? await context.newPage();
+
+  await page.goto("https://example.com");
+  console.log(await page.title());
+} finally {
+  await computer.delete();
+}
+```
+
+### Display Connections
+
+Use `createDisplayConnection()` when a Remote Framebuffer (RFB) client, such as
+the browser-based noVNC viewer, needs to watch the graphical desktop.
+Connections are read-only by default. Pass
+`{ mode: "read_write" }` when the viewer also needs pointer and keyboard control:
+
+```js
+import { Computer } from "@celestoai/sdk";
+
+const computer = await Computer.get("curie");
+const display = await computer.createDisplayConnection({ mode: "read_only" });
+console.log(display.mode, display.expiresAt);
+```
+
+Pass `display.url` to the RFB client before it expires. Browser and display URLs
+contain short-lived secret tokens, so do not log, persist, or share them. Create
+a new connection after a disconnect or expiry. Browser automation and
+read-write display connections require write access to the computer.
 
 ## Gatekeeper
 
