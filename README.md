@@ -555,6 +555,56 @@ print(session["terminal_id"], session["expires_at"])
 Pass `session["url"]` directly to a WebSocket client before it expires. Do not
 log or share the URL because it includes the terminal token.
 
+### Connect to Browser Automation and the Display
+
+Use the `browser-agent` template when your application needs an existing
+Chromium browser. `create_browser_connection()` returns a short-lived Chrome
+DevTools Protocol (CDP) WebSocket URL that Playwright can attach to. Install
+Playwright in the application that runs this code:
+
+```bash
+pip install playwright
+```
+
+Then connect to the browser already running in the Celesto computer:
+
+```python
+from playwright.sync_api import sync_playwright
+
+from celesto import Computer
+
+computer = Computer(template_id="browser-agent")
+try:
+    connection = computer.create_browser_connection()
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.connect_over_cdp(connection["url"])
+        context = browser.contexts[0]
+        page = context.pages[0] if context.pages else context.new_page()
+        page.goto("https://example.com")
+        print(page.title())
+finally:
+    computer.delete()
+```
+
+Use `create_display_connection()` when a Remote Framebuffer (RFB) client, such
+as the browser-based noVNC viewer, needs to watch the graphical desktop.
+Connections are read-only by default. Pass
+`mode="read_write"` when the viewer also needs pointer and keyboard control:
+
+```python
+from celesto import Computer
+
+computer = Computer.get("curie")
+display = computer.create_display_connection(mode="read_only")
+print(display["mode"], display["expires_at"])
+```
+
+Pass `display["url"]` to the RFB client before it expires. Browser and display
+URLs contain short-lived secret tokens, so do not log, persist, or share them.
+Create a new connection after a disconnect or expiry. Browser automation and
+read-write display connections require write access to the computer.
+
 ### List, Stop, Start, and Delete
 
 `computer_id` can be `computer.id` from `Computer()` or a computer name shown by
@@ -576,6 +626,8 @@ for computer in computers:
 | `Computer.list(status="running", template_id="browser-agent", project_id="proj_123", limit=10)` | List matching computers |
 | `Computer.get(computer_id)` | Get one computer by name or ID |
 | `computer.create_terminal_session()` | Create a short-lived fast terminal connection |
+| `computer.create_browser_connection()` | Create a short-lived CDP connection to browser-agent Chromium |
+| `computer.create_display_connection(mode="read_only")` | Create a short-lived RFB display connection |
 | `computer.stop()` | Stop a running computer |
 | `computer.start()` | Start a stopped computer |
 | `computer.delete()` | Delete a computer |

@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import * as sdk from "../src/index";
+import type {
+  BrowserConnectionInfo,
+  CreateComputerParams,
+  DisplayConnectionInfo,
+} from "../src/index";
 import { Computer } from "../src/computers/computer";
 import { ComputersClient } from "../src/computers/client";
-import type { CreateComputerParams } from "../src/computers/types";
 import type { ClientConfig } from "../src/core/config";
 import { CelestoApiError, CelestoError, CelestoNetworkError } from "../src/core/errors";
 
@@ -785,6 +789,27 @@ describe("ComputersClient", () => {
           },
         };
       }
+      if (call.url.endsWith("/browser")) {
+        return {
+          status: 201,
+          body: {
+            gateway_url: "wss://gateway.example/v1/browsers/cmp_1/connect",
+            token: "browser-token",
+            expires_at: "2026-09-17T12:01:00Z",
+          },
+        };
+      }
+      if (call.url.endsWith("/display")) {
+        return {
+          status: 201,
+          body: {
+            gateway_url: "wss://gateway.example/v1/displays/cmp_1/connect",
+            token: "display-token",
+            expires_at: "2026-09-17T12:01:00Z",
+            mode: "read_write",
+          },
+        };
+      }
       return {
         status: 201,
         body: {
@@ -808,6 +833,10 @@ describe("ComputersClient", () => {
     const result = await computer.run("echo hello", { timeout: 60 });
     await computer.stop();
     const url = await computer.publishPort(8080);
+    const browser: BrowserConnectionInfo = await computer.createBrowserConnection();
+    const display: DisplayConnectionInfo = await computer.createDisplayConnection({
+      mode: "read_write",
+    });
 
     assert.equal(computer.name, "curie");
     assert.equal(computer["name"], "curie");
@@ -815,6 +844,9 @@ describe("ComputersClient", () => {
     assert.equal(result.stdout, "hello\n");
     assert.equal(computer.status, "stopped");
     assert.equal(url, "https://p-test.celesto.ai");
+    assert.equal(browser.url, "wss://gateway.example/v1/browsers/cmp_1/connect?token=browser-token");
+    assert.equal(display.mode, "read_write");
+    assert.deepEqual(calls[calls.length - 1]!.body, { mode: "read_write" });
     assert.deepEqual(calls[0]!.body, {
       vcpus: 1,
       ram_mb: 512,
@@ -909,6 +941,118 @@ describe("ComputersClient", () => {
 
     assert.equal(calls[0]!.url, "https://api.example.test/v1/computers/cmp_1/terminals");
     assert.equal(connection.url, "wss://gateway.example/connect?region=us&token=token");
+  });
+
+  it("createBrowserConnection() returns a CDP-ready gateway URL", async () => {
+    const { fetch, calls } = makeFetchMock(() => ({
+      status: 201,
+      body: {
+        gateway_url: "wss://gateway.example/v1/browsers/cmp_1/connect?region=us",
+        token: "browser token",
+        expires_at: "2026-09-17T12:01:00Z",
+      },
+    }));
+    const client = new ComputersClient(makeConfig(fetch));
+
+    const connection = await client.createBrowserConnection("my computer");
+
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(
+      calls[0]!.url,
+      "https://api.example.test/v1/computers/my%20computer/browser",
+    );
+    assert.deepEqual(connection, {
+      gatewayUrl: "wss://gateway.example/v1/browsers/cmp_1/connect?region=us",
+      url: "wss://gateway.example/v1/browsers/cmp_1/connect?region=us&token=browser%20token",
+      token: "browser token",
+      expiresAt: "2026-09-17T12:01:00Z",
+    });
+  });
+
+  it("createBrowserConnection() rejects an incomplete successful response", async () => {
+    const { fetch } = makeFetchMock(() => ({
+      status: 201,
+      body: {
+        gateway_url: "wss://gateway.example/v1/browsers/cmp_1/connect",
+        expires_at: "2026-09-17T12:01:00Z",
+      },
+    }));
+    const client = new ComputersClient(makeConfig(fetch));
+
+    await assert.rejects(
+      client.createBrowserConnection("cmp_1"),
+      (error: unknown) =>
+        error instanceof CelestoError &&
+        error.message ===
+          "Celesto did not return browser connection details. Call createBrowserConnection() again.",
+    );
+  });
+
+  it("createDisplayConnection() requests and returns the display mode", async () => {
+    const { fetch, calls } = makeFetchMock(() => ({
+      status: 201,
+      body: {
+        gateway_url: "wss://gateway.example/v1/displays/cmp_1/connect",
+        token: "display token",
+        expires_at: "2026-09-17T12:01:00Z",
+        mode: "read_write",
+      },
+    }));
+    const client = new ComputersClient(makeConfig(fetch));
+
+    const connection = await client.createDisplayConnection("cmp_1", {
+      mode: "read_write",
+    });
+
+    assert.equal(calls[0]!.method, "POST");
+    assert.equal(calls[0]!.url, "https://api.example.test/v1/computers/cmp_1/display");
+    assert.deepEqual(calls[0]!.body, { mode: "read_write" });
+    assert.deepEqual(connection, {
+      gatewayUrl: "wss://gateway.example/v1/displays/cmp_1/connect",
+      url: "wss://gateway.example/v1/displays/cmp_1/connect?token=display%20token",
+      token: "display token",
+      expiresAt: "2026-09-17T12:01:00Z",
+      mode: "read_write",
+    });
+  });
+
+  it("createDisplayConnection() leaves the mode body absent for the read-only default", async () => {
+    const { fetch, calls } = makeFetchMock(() => ({
+      status: 201,
+      body: {
+        gateway_url: "wss://gateway.example/v1/displays/cmp_1/connect",
+        token: "display-token",
+        expires_at: "2026-09-17T12:01:00Z",
+        mode: "read_only",
+      },
+    }));
+    const client = new ComputersClient(makeConfig(fetch));
+
+    const connection = await client.createDisplayConnection("cmp_1");
+
+    assert.equal(calls[0]!.body, undefined);
+    assert.equal(connection.mode, "read_only");
+  });
+
+  it("createDisplayConnection() rejects an invalid display mode", async () => {
+    const { fetch } = makeFetchMock(() => ({
+      status: 201,
+      body: {
+        gateway_url: "wss://gateway.example/v1/displays/cmp_1/connect",
+        token: "display-token",
+        expires_at: "2026-09-17T12:01:00Z",
+        mode: "write_everything",
+      },
+    }));
+    const client = new ComputersClient(makeConfig(fetch));
+
+    await assert.rejects(
+      client.createDisplayConnection("cmp_1"),
+      (error: unknown) =>
+        error instanceof CelestoError &&
+        error.message ===
+          "Celesto did not return display connection details. Call createDisplayConnection() again.",
+    );
   });
 });
 

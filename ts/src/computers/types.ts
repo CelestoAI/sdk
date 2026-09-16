@@ -189,3 +189,34 @@ export interface TerminalSessionInfo extends TerminalConnectionInfo {
   /** ISO 8601 expiry time for the terminal token. */
   expiresAt: string;
 }
+
+export interface BrowserConnectionInfo {
+  /** Authenticated CDP WebSocket URL ready for a browser automation client. */
+  url: string;
+  /** Gateway URL without credentials. */
+  gatewayUrl: string;
+  /** Short-lived browser connection token. Treat this value as a secret. */
+  token: string;
+  /** ISO 8601 expiry time for the browser token. */
+  expiresAt: string;
+}
+
+export type DisplayConnectionMode = "read_only" | "read_write";
+
+export interface DisplayConnectionParams {
+  /** Watch the display, or also allow pointer and keyboard input. Defaults to read_only. */
+  mode?: DisplayConnectionMode;
+}
+
+export interface DisplayConnectionInfo {
+  /** Authenticated RFB WebSocket URL ready for an RFB/noVNC client. */
+  url: string;
+  /** Gateway URL without credentials. */
+  gatewayUrl: string;
+  /** Short-lived display connection token. Treat this value as a secret. */
+  token: string;
+  /** ISO 8601 expiry time for the display token. */
+  expiresAt: string;
+  /** Whether this connection can only watch or can also control the display. */
+  mode: DisplayConnectionMode;
+}

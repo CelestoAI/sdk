@@ -5,7 +5,13 @@ from collections.abc import Iterator, MutableMapping
 from typing import Any
 
 from .exceptions import CelestoValidationError
-from .types import ComputerTerminalSessionInfo, NetworkPolicy
+from .types import (
+    ComputerBrowserConnectionInfo,
+    ComputerDisplayConnectionInfo,
+    ComputerTerminalSessionInfo,
+    DisplayConnectionMode,
+    NetworkPolicy,
+)
 
 _DISK_RE = re.compile(r"^\s*(?P<amount>\d+(?:\.\d+)?)\s*(?P<unit>[a-zA-Z]*)\s*$")
 _DISK_UNITS_TO_MB = {
@@ -280,6 +286,21 @@ class Computer(MutableMapping[str, Any]):
     def create_terminal_session(self) -> ComputerTerminalSessionInfo:
         """Create a short-lived direct terminal gateway connection."""
         return self._client.computers.create_terminal_session(self._identifier())
+
+    def create_browser_connection(self) -> ComputerBrowserConnectionInfo:
+        """Create a short-lived CDP connection for browser automation."""
+        return self._client.computers.create_browser_connection(self._identifier())
+
+    def create_display_connection(
+        self,
+        *,
+        mode: DisplayConnectionMode = "read_only",
+    ) -> ComputerDisplayConnectionInfo:
+        """Create a short-lived RFB connection to the graphical display."""
+        return self._client.computers.create_display_connection(
+            self._identifier(),
+            mode=mode,
+        )
 
     def stop(self) -> "Computer":
         """Stop this computer and update the local data."""

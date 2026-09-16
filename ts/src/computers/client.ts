@@ -1,7 +1,8 @@
 import { buildRequestContext, ClientConfig, RequestOverrides } from "../core/config";
-import { CelestoNetworkError } from "../core/errors";
+import { CelestoError, CelestoNetworkError } from "../core/errors";
 import { request, requestStream } from "../core/http";
 import {
+  BrowserConnectionInfo,
   ComputerCommandHistoryEntry,
   ComputerCommandHistoryResponse,
   ComputerConnectionInfo,
@@ -13,6 +14,8 @@ import {
   ComputerPublishedPortInfo,
   ComputerStatus,
   CreateComputerParams,
+  DisplayConnectionInfo,
+  DisplayConnectionParams,
   ExecParams,
   ListCommandHistoryParams,
   ListComputersParams,
@@ -91,6 +94,16 @@ interface TerminalConnectionInfoWire {
   gateway_url: string;
   token: string;
   expires_at: string;
+}
+
+interface BrowserConnectionInfoWire {
+  gateway_url: string;
+  token: string;
+  expires_at: string;
+}
+
+interface DisplayConnectionInfoWire extends BrowserConnectionInfoWire {
+  mode: DisplayConnectionInfo["mode"];
 }
 
 interface SandboxTemplateInfoWire {
@@ -176,19 +189,69 @@ const toCommandHistoryEntry = (
   errorType: payload.error_type,
 });
 
+function authenticatedGatewayUrl(gatewayUrl: string, token: string): string {
+  const separator = gatewayUrl.includes("?") ? "&" : "?";
+  return `${gatewayUrl}${separator}token=${encodeURIComponent(token)}`;
+}
+
 const toTerminalConnectionInfo = (
   payload: TerminalConnectionInfoWire,
 ): TerminalSessionInfo => {
-  const separator = payload.gateway_url.includes("?") ? "&" : "?";
   return {
     terminalId: payload.terminal_id,
     gatewayUrl: payload.gateway_url,
-    url: `${payload.gateway_url}${separator}token=${encodeURIComponent(payload.token)}`,
+    url: authenticatedGatewayUrl(payload.gateway_url, payload.token),
     token: payload.token,
     expiresAt: payload.expires_at,
     headers: {},
     firstMessage: "",
   };
+};
+
+const toBrowserConnectionInfo = (
+  payload: unknown,
+): BrowserConnectionInfo => {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    typeof (payload as Partial<BrowserConnectionInfoWire>).gateway_url !== "string" ||
+    typeof (payload as Partial<BrowserConnectionInfoWire>).token !== "string" ||
+    typeof (payload as Partial<BrowserConnectionInfoWire>).expires_at !== "string"
+  ) {
+    throw new CelestoError(
+      "Celesto did not return browser connection details. Call createBrowserConnection() again.",
+    );
+  }
+  const connection = payload as BrowserConnectionInfoWire;
+  return {
+    gatewayUrl: connection.gateway_url,
+    url: authenticatedGatewayUrl(connection.gateway_url, connection.token),
+    token: connection.token,
+    expiresAt: connection.expires_at,
+  };
+};
+
+const toDisplayConnectionInfo = (
+  payload: unknown,
+): DisplayConnectionInfo => {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    ((payload as Partial<DisplayConnectionInfoWire>).mode !== "read_only" &&
+      (payload as Partial<DisplayConnectionInfoWire>).mode !== "read_write")
+  ) {
+    throw new CelestoError(
+      "Celesto did not return display connection details. Call createDisplayConnection() again.",
+    );
+  }
+  const connection = payload as DisplayConnectionInfoWire;
+  try {
+    return { ...toBrowserConnectionInfo(connection), mode: connection.mode };
+  } catch {
+    throw new CelestoError(
+      "Celesto did not return display connection details. Call createDisplayConnection() again.",
+    );
+  }
 };
 
 const toSandboxTemplateInfo = (payload: SandboxTemplateInfoWire): SandboxTemplateInfo => ({
@@ -756,6 +819,36 @@ export class ComputersClient {
       ...pickOverrides(options),
     });
     return toTerminalConnectionInfo(data);
+  }
+
+  /** Create a short-lived CDP connection for browser automation. */
+  async createBrowserConnection(
+    computerIdOrName: string,
+    options?: RequestOverrides,
+  ): Promise<BrowserConnectionInfo> {
+    const ctx = buildRequestContext(this.config);
+    const data = await request<BrowserConnectionInfoWire>(ctx, {
+      method: "POST",
+      path: computersPath(`/${encodeURIComponent(computerIdOrName)}/browser`),
+      ...pickOverrides(options),
+    });
+    return toBrowserConnectionInfo(data);
+  }
+
+  /** Create a short-lived RFB connection to watch or control the graphical display. */
+  async createDisplayConnection(
+    computerIdOrName: string,
+    params: DisplayConnectionParams = {},
+    options?: RequestOverrides,
+  ): Promise<DisplayConnectionInfo> {
+    const ctx = buildRequestContext(this.config);
+    const data = await request<DisplayConnectionInfoWire>(ctx, {
+      method: "POST",
+      path: computersPath(`/${encodeURIComponent(computerIdOrName)}/display`),
+      body: params.mode === undefined ? undefined : { mode: params.mode },
+      ...pickOverrides(options),
+    });
+    return toDisplayConnectionInfo(data);
   }
 
   /** @deprecated Use createTerminalSession(). */

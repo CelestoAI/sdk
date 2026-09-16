@@ -133,6 +133,28 @@ class ComputerTerminalSessionInfo(TypedDict):
     url: str
 
 
+class ComputerBrowserConnectionInfo(TypedDict):
+    """Short-lived CDP connection details for browser automation."""
+
+    gateway_url: str
+    token: str
+    expires_at: str
+    url: str
+
+
+DisplayConnectionMode = Literal["read_only", "read_write"]
+
+
+class ComputerDisplayConnectionInfo(TypedDict):
+    """Short-lived RFB connection details for a graphical display."""
+
+    gateway_url: str
+    token: str
+    expires_at: str
+    url: str
+    mode: DisplayConnectionMode
+
+
 PublishedPortStatus = Literal[
     "publishing",
     "published",
@@ -257,6 +279,9 @@ __all__ = [
     "ComputerStatus",
     "ComputerConnectionInfo",
     "ComputerTerminalSessionInfo",
+    "ComputerBrowserConnectionInfo",
+    "ComputerDisplayConnectionInfo",
+    "DisplayConnectionMode",
     "PublishedPortStatus",
     "ComputerPublishedPortInfo",
     "ComputerInfo",

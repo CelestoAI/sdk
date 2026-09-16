@@ -55,12 +55,13 @@ celesto-sdk/
 - Location: [ts/](ts/)
 - Package name: `@celestoai/sdk` (published to npm with public access)
 - Scope: **Gatekeeper** + **Computers**. `Celesto` composes both: `celesto.gatekeeper.*` and `celesto.computers.*`. Individual clients are also importable via subpath exports (`@celestoai/sdk/gatekeeper`, `@celestoai/sdk/computers`).
-- Computers parity with Python: all 7 HTTP methods (`create`, `list`, `get`, `exec`, `stop`, `start`, `delete`) plus `getTerminalConnection()` which returns `{ url, headers, firstMessage }` for BYO WebSocket. Zero runtime dependencies.
-- Terminal rules (mirror [src/celesto/computer.py](src/celesto/computer.py)):
-  - Always resolve name → ID via `get()` before the WebSocket handshake — the WS endpoint does not resolve names. `getTerminalConnection()` does this internally.
-  - WebSocket handshake needs `Authorization: Bearer` header (returned in `headers`); the legacy first-message `{"token": ...}` JSON is returned in `firstMessage` for backend compat.
-  - Resize frames are `{"type": "resize", "cols": N, "rows": N}`.
-  - Does **not** auto-resume stopped computers — that's application logic, not SDK default.
+- Computers parity with Python includes lifecycle, command execution and streaming, published ports, command history, terminal sessions, browser automation connections, and read-only/read-write display connections. Zero runtime dependencies.
+- Stream connection methods return an authenticated `url` containing a short-lived token: `createTerminalSession()`, `createBrowserConnection()`, and `createDisplayConnection()`. Treat each URL as a secret and mint a new connection after disconnect or expiry.
+- Stream connection rules (mirror [ts/src/computers/client.ts](ts/src/computers/client.ts)):
+  - `createTerminalSession()` returns the durable terminal ID plus a direct gateway URL. `getTerminalConnection()` remains as a deprecated alias.
+  - `createBrowserConnection()` returns a browser-level CDP URL. `createDisplayConnection()` returns an RFB URL and defaults to `read_only`; callers opt into `read_write`.
+  - The authenticated `url` already carries the encoded capability token. Legacy terminal `headers` and `firstMessage` fields remain empty for source compatibility.
+  - Stream methods do **not** auto-resume stopped computers. That's application logic, not SDK default.
 - Public API is camelCase; wire DTOs are snake_case (`vcpus`, `ram_mb`, `exit_code`, etc.) mapped in the client file. Same pattern as Gatekeeper.
 - Error hierarchy: `CelestoError` (base) → `CelestoApiError` (HTTP errors with `.status`) and `CelestoNetworkError` (DNS, timeout, offline). Network failures from `fetch()` are always wrapped — never leak raw `TypeError`.
 - Build: `cd ts && npm install && npm run build` (tsup → ESM + CJS + DTS under `ts/dist/`)
@@ -515,3 +516,22 @@ Key rules:
 
 - **Support:** support@celesto.ai
 - **Maintainer:** Aniket Maurya (aniket@celesto.ai)
+
+## Skill routing
+
+When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
+
+Key routing rules:
+- Product ideas/brainstorming → invoke /office-hours
+- Strategy/scope → invoke /plan-ceo-review
+- Architecture → invoke /plan-eng-review
+- Design system/plan review → invoke /design-consultation or /plan-design-review
+- Full review pipeline → invoke /autoplan
+- Bugs/errors → invoke /investigate
+- QA/testing site behavior → invoke /qa or /qa-only
+- Code review/diff check → invoke /review
+- Visual polish → invoke /design-review
+- Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Save progress → invoke /context-save
+- Resume context → invoke /context-restore
+- Author a backlog-ready spec/issue → invoke /spec
