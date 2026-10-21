@@ -115,7 +115,7 @@ class _BaseClient:
 
     def _request(
         self,
-        method: Literal["GET", "POST", "PUT", "DELETE"],
+        method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"],
         path: str,
         *,
         params: dict[str, Any] | None = None,
@@ -128,7 +128,7 @@ class _BaseClient:
         """Make an HTTP request with proper error handling.
 
         Args:
-            method: HTTP method (GET, POST, PUT, DELETE)
+            method: HTTP method (GET, POST, PUT, PATCH, DELETE)
             path: URL path (will be joined with base_url)
             params: Query parameters
             json_body: JSON request body
@@ -234,8 +234,8 @@ class _BaseClient:
         """Handle HTTP response and raise appropriate exceptions for errors."""
         status = response.status_code
 
-        # Success responses
-        if status in (200, 201, 204):
+        # Success responses. 202 is "accepted, work queued" (template rebuild).
+        if status in (200, 201, 202, 204):
             if status == 204 or not response.content:
                 return {}
             try:

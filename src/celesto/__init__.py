@@ -16,6 +16,7 @@ from .sdk import (
     SessionAgentMismatchError,
     SessionBusyError,
     SessionEndUserMismatchError,
+    Template,
 )
 
 __version__ = "0.0.14"
@@ -24,6 +25,7 @@ __all__ = [
     "AgentArchivedError",
     "BudgetExceededError",
     "Computer",
+    "Template",
     "NetworkPolicy",
     "ConfigKeyNotAllowedError",
     "IdempotencyConflictError",

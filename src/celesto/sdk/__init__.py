@@ -6,6 +6,7 @@ from .exceptions import (
     CelestoNotFoundError,
     CelestoRateLimitError,
     CelestoServerError,
+    CelestoTemplateBuildError,
     CelestoValidationError,
 )
 from .runtime import (
@@ -36,6 +37,7 @@ from .runtime import (
     SessionEndUserMismatchError,
     SessionTranscript,
 )
+from .template import Template
 from .types import (
     AccessRules,
     ComputerBrowserConnectionInfo,
@@ -64,6 +66,7 @@ from .types import (
 __all__ = [
     # Main resource classes
     "Computer",
+    "Template",
     "NetworkPolicy",
     "ManagedAgentsClient",
     # Managed agents
@@ -101,6 +104,7 @@ __all__ = [
     "CelestoRateLimitError",
     "CelestoServerError",
     "CelestoNetworkError",
+    "CelestoTemplateBuildError",
     # Types
     "DeploymentInfo",
     "DeploymentResponse",

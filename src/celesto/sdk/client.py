@@ -5,7 +5,7 @@ import tarfile
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import pathspec
@@ -14,6 +14,7 @@ from .base import _BASE_URL, _BaseClient, _BaseConnection
 from .computer import resolve_disk_size_mb
 from .exceptions import (
     CelestoError,
+    CelestoNotFoundError,
     CelestoServerError,
     CelestoValidationError,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "Deployment",
     "GateKeeper",
     "Organizations",
+    "Templates",
     "_BaseClient",
     "_BaseConnection",
     "_CelestoClient",
@@ -1085,6 +1087,173 @@ class Computers(_BaseClient):
         return self._request("DELETE", f"/computers/{computer_id}")
 
 
+# The /templates routes answer 404 when custom templates are not enabled for
+# the caller, so a 404 on a collection route (create, list, lint) means "not
+# enabled" rather than "no such template".
+_TEMPLATES_NOT_ENABLED = (
+    "Custom templates are not enabled for this account. "
+    "Contact Celesto support to turn them on."
+)
+
+
+class Templates(_BaseClient):
+    """Client for custom templates: computers with your own packages preinstalled.
+
+    A custom template is a built-in base template plus a shell build script.
+    Celesto runs the script once, saves the result, and every computer created
+    with the template's ``tpl_...`` ID starts from it.
+
+    Internal wrapper for the public ``Template`` resource class.
+    """
+
+    def _collection_request(
+        self, method: Literal["GET", "POST"], path: str, **kwargs: Any
+    ) -> Any:
+        """Call a collection route, turning its 404 into a "not enabled" error."""
+        try:
+            return self._request(method, path, **kwargs)
+        except CelestoNotFoundError as e:
+            raise CelestoNotFoundError(
+                _TEMPLATES_NOT_ENABLED, response=e.response
+            ) from e
+
+    def create(
+        self,
+        *,
+        name: str,
+        build_script: str,
+        base_template_id: str | None = None,
+        default_vcpus: int | None = None,
+        default_ram_mb: int | None = None,
+        default_disk_size_mb: int | None = None,
+    ) -> dict[str, Any]:
+        """Create a custom template and queue its first build.
+
+        Args:
+            name: Label shown to your team. Letters, digits, spaces, dots,
+                underscores and dashes; unique within the organization.
+            build_script: Shell commands to run once at build time, as root.
+                At most 64 KB. Files can't be uploaded, so list packages
+                directly instead of using ``-r requirements.txt``.
+            base_template_id: Built-in template to build on. The API defaults
+                to ``coding-agent``.
+            default_vcpus: Default vCPUs for computers made from this template.
+            default_ram_mb: Default memory in MB.
+            default_disk_size_mb: Default disk in MB. Give all three default
+                size fields or none; together they must match a sandbox size.
+
+        Returns:
+            The template, with ``status`` ``queued`` and any lint ``warnings``.
+        """
+        payload: dict[str, Any] = {"name": name, "build_script": build_script}
+        if base_template_id is not None:
+            payload["base_template_id"] = base_template_id
+        payload.update(
+            _default_size_payload(default_vcpus, default_ram_mb, default_disk_size_mb)
+        )
+        return self._collection_request("POST", "/templates", json_body=payload)
+
+    def lint(
+        self, *, build_script: str, base_template_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Check a build script without creating or building anything.
+
+        Returns:
+            The warnings ``create`` would return, each with ``line``, ``code``
+            and ``message``. Warnings never block a build.
+        """
+        payload: dict[str, Any] = {"build_script": build_script}
+        if base_template_id is not None:
+            payload["base_template_id"] = base_template_id
+        response = self._collection_request(
+            "POST", "/templates/lint", json_body=payload
+        )
+        return list(response.get("warnings", []))
+
+    def list(self) -> list[dict[str, Any]]:
+        """List the organization's custom templates, newest first."""
+        response = self._collection_request("GET", "/templates")
+        return list(response.get("templates", []))
+
+    def get(self, template_id: str) -> dict[str, Any]:
+        """Get one custom template, including its build ``status``."""
+        return self._request("GET", f"/templates/{template_id}")
+
+    def logs(
+        self, template_id: str, *, known_size: int | None = None
+    ) -> dict[str, Any]:
+        """Get the end of the latest build's log (at most the last 256 KB).
+
+        Args:
+            template_id: Template ID.
+            known_size: The ``size`` from your previous call. While the log
+                has not grown, the answer has ``unchanged: True`` and an
+                empty ``log``.
+
+        Returns:
+            Dict with ``log``, ``offset`` (byte position where ``log`` starts),
+            ``size``, ``truncated``, ``unchanged`` and ``status``.
+        """
+        params = {"known_size": known_size} if known_size is not None else None
+        return self._request("GET", f"/templates/{template_id}/logs", params=params)
+
+    def update(
+        self,
+        template_id: str,
+        *,
+        name: str | None = None,
+        build_script: str | None = None,
+        default_vcpus: int | None = None,
+        default_ram_mb: int | None = None,
+        default_disk_size_mb: int | None = None,
+    ) -> dict[str, Any]:
+        """Change a template's name, build script or default size. Admins only.
+
+        A new build script takes effect on the next ``rebuild``.
+        """
+        payload: dict[str, Any] = {}
+        if name is not None:
+            payload["name"] = name
+        if build_script is not None:
+            payload["build_script"] = build_script
+        payload.update(
+            _default_size_payload(default_vcpus, default_ram_mb, default_disk_size_mb)
+        )
+        if not payload:
+            raise CelestoValidationError(
+                "Provide name, build_script or a default size to update."
+            )
+        return self._request("PATCH", f"/templates/{template_id}", json_body=payload)
+
+    def rebuild(self, template_id: str) -> dict[str, Any]:
+        """Rebuild with the current script and the latest base. Admins only.
+
+        The API refuses while a build is already queued or running.
+        """
+        return self._request("POST", f"/templates/{template_id}/rebuild")
+
+    def delete(self, template_id: str) -> None:
+        """Delete a custom template. Admins only."""
+        self._request("DELETE", f"/templates/{template_id}")
+
+
+def _default_size_payload(
+    vcpus: int | None, ram_mb: int | None, disk_size_mb: int | None
+) -> dict[str, int]:
+    """Build the default-size fields, which the API takes all together or not at all."""
+    values = {
+        "default_vcpus": vcpus,
+        "default_ram_mb": ram_mb,
+        "default_disk_size_mb": disk_size_mb,
+    }
+    given = {key: value for key, value in values.items() if value is not None}
+    if given and len(given) != len(values):
+        raise CelestoValidationError(
+            "Provide default_vcpus, default_ram_mb and default_disk_size_mb together."
+        )
+    return given
+
+
 class Organizations(_BaseClient):
     """Read-only view of the organization the current API key acts on."""
 
@@ -1195,6 +1364,7 @@ class _CelestoClient(_BaseConnection):
         self.deployment = Deployment(self)
         self.gatekeeper = GateKeeper(self)
         self.computers = Computers(self)
+        self.templates = Templates(self)
         self.organizations = Organizations(self)
         # Managed agents: agents you define once and run for your end users.
         self.agents = Agents(self)

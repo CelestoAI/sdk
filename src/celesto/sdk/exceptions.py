@@ -125,6 +125,35 @@ class CelestoServerError(CelestoError):
     pass
 
 
+class CelestoTemplateBuildError(CelestoError):
+    """Raised when waiting on a custom template whose build did not succeed.
+
+    The build ended as ``failed``, or as ``needs_rebuild`` (the base template
+    moved on and the template must be rebuilt before it can be used).
+
+    Attributes:
+        template: The template record as last read from the API.
+        failure: Where the build script failed, when known: ``line``,
+            ``line_number``, ``exit_code`` and ``hint``. None otherwise.
+
+    Example:
+        try:
+            template.wait()
+        except CelestoTemplateBuildError as e:
+            print(e.failure)
+    """
+
+    def __init__(
+        self,
+        message: str,
+        template: dict[str, Any] | None = None,
+        failure: dict[str, Any] | None = None,
+    ):
+        super().__init__(message)
+        self.template = template or {}
+        self.failure = failure
+
+
 class CelestoNetworkError(CelestoError):
     """Raised when a network-level error occurs.
 

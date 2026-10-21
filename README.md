@@ -515,6 +515,93 @@ finally:
     computer.delete()
 ```
 
+### Custom Templates
+
+A custom template is a built-in template plus your own setup commands. Celesto
+runs the commands once, saves the result, and every computer you create from
+the template starts with your packages already installed.
+
+Write the commands as a shell script and create the template:
+
+```python
+from celesto import Template
+
+template = Template(
+    name="data-env",
+    base_template_id="coding-agent",  # optional, coding-agent is the default
+    build_script="""
+apt-get install -y ffmpeg postgresql-client
+pip install pandas polars duckdb
+""",
+)
+print(template.id, template.status)  # tpl_..., queued
+for warning in template.warnings:
+    print(f"line {warning['line']}: {warning['message']}")
+
+template.wait(on_log=print)  # streams the build log, returns when ready
+
+computer = template.create_computer()
+print(computer.run("ffmpeg -version")["stdout"])
+```
+
+You can also pass the template ID anywhere a template ID is accepted, such as
+`Computer(template_id="tpl_...")`.
+
+How the build script runs:
+
+- It runs once, at build time, as root, with `set -euxo pipefail`. The first
+  failing command stops the build.
+- Files can't be uploaded. List packages directly instead of using
+  `pip install -r requirements.txt` or `./setup.sh`.
+- The script can be at most 64 KB, and a build can run for at most 30 minutes.
+- Services don't run during the build. Install them in the script and start
+  them on the computer.
+
+Check a script before creating anything:
+
+```python
+warnings = Template.lint("apt-get install ffmpeg")  # warns: missing -y
+```
+
+When a build fails, `wait()` raises `CelestoTemplateBuildError`. Its
+`failure` attribute names the failing line, its exit code, and a hint for
+common mistakes:
+
+```python
+from celesto.sdk import CelestoTemplateBuildError
+
+try:
+    template.wait()
+except CelestoTemplateBuildError as e:
+    print(e)          # message with the failing line
+    print(e.failure)  # {"line": ..., "line_number": ..., "exit_code": ..., "hint": ...}
+    print(template.logs()["log"])
+```
+
+Change the script and build it again. Editing and rebuilding need an
+organization admin:
+
+```python
+template.edit(build_script="apt-get install -y ffmpeg\npip install pandas")
+template.rebuild().wait(on_log=print)
+```
+
+| Method | Description |
+|--------|-------------|
+| `Template(name=..., build_script=...)` | Create a template and start its build |
+| `Template.get("tpl_...")` | Load an existing template |
+| `Template.list()` | List your organization's templates |
+| `Template.lint(script)` | Check a script without building |
+| `template.wait(timeout=1800, on_log=print)` | Wait until the build is ready |
+| `template.logs()` | Get the latest build log |
+| `template.edit(name=..., build_script=...)` | Change the name, script, or default size |
+| `template.rebuild()` | Rebuild with the current script and latest base |
+| `template.create_computer(**kwargs)` | Create a computer from the template |
+| `template.delete()` | Delete the template |
+
+Custom templates must be enabled for your account. Until they are, these calls
+raise `CelestoNotFoundError` with a message saying so.
+
 ### Run a Command
 
 ```python
