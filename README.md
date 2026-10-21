@@ -519,7 +519,10 @@ finally:
 
 A custom template is a built-in template plus your own setup commands. Celesto
 runs the commands once, saves the result, and every computer you create from
-the template starts with your packages already installed.
+the template starts with your packages already installed. Requires `celesto`
+0.0.15 or later; see the
+[custom templates guide](https://docs.celesto.ai/cloud/features/custom-templates)
+for more.
 
 Write the commands as a shell script and create the template:
 
@@ -592,15 +595,31 @@ template.rebuild().wait(on_log=print)
 | `Template.get("tpl_...")` | Load an existing template |
 | `Template.list()` | List your organization's templates |
 | `Template.lint(script)` | Check a script without building |
-| `template.wait(timeout=1800, on_log=print)` | Wait until the build is ready |
+| `template.wait(timeout=2400, on_log=print)` | Wait until the build is ready |
 | `template.logs()` | Get the latest build log |
 | `template.edit(name=..., build_script=...)` | Change the name, script, or default size |
 | `template.rebuild()` | Rebuild with the current script and latest base |
 | `template.create_computer(**kwargs)` | Create a computer from the template |
 | `template.delete()` | Delete the template |
 
-Custom templates must be enabled for your account. Until they are, these calls
-raise `CelestoNotFoundError` with a message saying so.
+`wait()` checks the build every 3 seconds, by default for up to 40 minutes (the
+30-minute build limit plus time queued). If a check hits a rate limit, a server
+error or a network error, `wait()` keeps retrying with backoff until the
+timeout, because the build keeps running.
+
+Errors you may see:
+
+| Error | When |
+|-------|------|
+| `CelestoNotFoundError` | Custom templates are not enabled for your account yet (the message says so) |
+| `CelestoConflictError` | You rebuild while a build is queued or running, reuse a template name, or create a computer from a template with no ready build |
+| `CelestoRateLimitError` | Your organization already has 2 builds queued or running; wait for one to finish |
+| `CelestoTemplateBuildError` | `wait()` saw the build fail, or the template needs a rebuild |
+
+`CelestoConflictError` is a subclass of `CelestoServerError`, so existing
+`except CelestoServerError` handlers still catch it.
+
+A template that is rebuilding still creates computers from its previous build.
 
 ### Run a Command
 
@@ -909,7 +928,7 @@ uv run ruff format .
 
 ## Links
 
-- [Documentation](https://docs.celesto.ai/celesto-sdk)
+- [Documentation](https://docs.celesto.ai)
 - [Celesto Platform](https://celesto.ai)
 - [GitHub Repository](https://github.com/CelestoAI/sdk)
 

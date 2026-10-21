@@ -3,10 +3,10 @@ import os
 import sys
 import tarfile
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, List, Literal, Optional
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 import pathspec
 
@@ -15,6 +15,7 @@ from .computer import resolve_disk_size_mb
 from .exceptions import (
     CelestoError,
     CelestoNotFoundError,
+    CelestoRateLimitError,
     CelestoServerError,
     CelestoValidationError,
 )
@@ -716,7 +717,10 @@ class Computers(_BaseClient):
         )
 
     def list_templates(self) -> list[dict[str, Any]]:
-        """List available sandbox templates.
+        """List the built-in sandbox templates, such as scratch and coding-agent.
+
+        Your organization's custom templates are listed by
+        ``client.templates.list()`` (``Template.list()``).
 
         Returns:
             List of template dicts with id, display_name, description, default
@@ -1094,6 +1098,31 @@ _TEMPLATES_NOT_ENABLED = (
     "Custom templates are not enabled for this account. "
     "Contact Celesto support to turn them on."
 )
+# Create and rebuild answer 429 with this code when the organization already
+# has its maximum of concurrent builds; that is not the per-minute limiter.
+_BUILD_LIMIT_ERROR_CODE = "template_build_limit"
+_BUILD_LIMIT_MESSAGE = (
+    "Your organization already has 2 template builds queued or running. "
+    "Wait for one to finish, then try again."
+)
+
+
+def _template_path(template_id: str, suffix: str = "") -> str:
+    """The URL path for one template, with the ID escaped.
+
+    Escaping keeps an ID such as ``../computers/x`` inside /templates instead
+    of letting it address another route with the same API key.
+    """
+    return f"/templates/{quote(template_id, safe='')}{suffix}"
+
+
+def _error_code(error: CelestoError) -> str | None:
+    """The ``detail.error_code`` of an API error response, when it has one."""
+    try:
+        detail = error.response.json().get("detail")
+    except (AttributeError, ValueError):
+        return None
+    return detail.get("error_code") if isinstance(detail, dict) else None
 
 
 class Templates(_BaseClient):
@@ -1115,6 +1144,18 @@ class Templates(_BaseClient):
         except CelestoNotFoundError as e:
             raise CelestoNotFoundError(
                 _TEMPLATES_NOT_ENABLED, response=e.response
+            ) from e
+
+    @staticmethod
+    def _starting_build(call: Callable[[], Any]) -> Any:
+        """Run a request that starts a build, explaining the concurrent-build limit."""
+        try:
+            return call()
+        except CelestoRateLimitError as e:
+            if _error_code(e) != _BUILD_LIMIT_ERROR_CODE:
+                raise
+            raise CelestoRateLimitError(
+                _BUILD_LIMIT_MESSAGE, response=e.response, retry_after=e.retry_after
             ) from e
 
     def create(
@@ -1151,7 +1192,9 @@ class Templates(_BaseClient):
         payload.update(
             _default_size_payload(default_vcpus, default_ram_mb, default_disk_size_mb)
         )
-        return self._collection_request("POST", "/templates", json_body=payload)
+        return self._starting_build(
+            lambda: self._collection_request("POST", "/templates", json_body=payload)
+        )
 
     def lint(
         self, *, build_script: str, base_template_id: str | None = None
@@ -1177,7 +1220,7 @@ class Templates(_BaseClient):
 
     def get(self, template_id: str) -> dict[str, Any]:
         """Get one custom template, including its build ``status``."""
-        return self._request("GET", f"/templates/{template_id}")
+        return self._request("GET", _template_path(template_id))
 
     def logs(
         self, template_id: str, *, known_size: int | None = None
@@ -1195,7 +1238,7 @@ class Templates(_BaseClient):
             ``size``, ``truncated``, ``unchanged`` and ``status``.
         """
         params = {"known_size": known_size} if known_size is not None else None
-        return self._request("GET", f"/templates/{template_id}/logs", params=params)
+        return self._request("GET", _template_path(template_id, "/logs"), params=params)
 
     def update(
         self,
@@ -1223,18 +1266,23 @@ class Templates(_BaseClient):
             raise CelestoValidationError(
                 "Provide name, build_script or a default size to update."
             )
-        return self._request("PATCH", f"/templates/{template_id}", json_body=payload)
+        return self._request("PATCH", _template_path(template_id), json_body=payload)
 
     def rebuild(self, template_id: str) -> dict[str, Any]:
         """Rebuild with the current script and the latest base. Admins only.
 
-        The API refuses while a build is already queued or running.
+        Raises:
+            CelestoConflictError: A build is already queued or running.
+            CelestoRateLimitError: The organization already has its maximum
+                of concurrent builds.
         """
-        return self._request("POST", f"/templates/{template_id}/rebuild")
+        return self._starting_build(
+            lambda: self._request("POST", _template_path(template_id, "/rebuild"))
+        )
 
     def delete(self, template_id: str) -> None:
         """Delete a custom template. Admins only."""
-        self._request("DELETE", f"/templates/{template_id}")
+        self._request("DELETE", _template_path(template_id))
 
 
 def _default_size_payload(

@@ -1,6 +1,7 @@
 from .computer import Computer
 from .exceptions import (
     CelestoAuthenticationError,
+    CelestoConflictError,
     CelestoError,
     CelestoNetworkError,
     CelestoNotFoundError,
@@ -103,6 +104,7 @@ __all__ = [
     "CelestoValidationError",
     "CelestoRateLimitError",
     "CelestoServerError",
+    "CelestoConflictError",
     "CelestoNetworkError",
     "CelestoTemplateBuildError",
     # Types

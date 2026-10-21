@@ -782,3 +782,60 @@ def test_computer_closes_owned_client_when_creation_fails(monkeypatch):
         Computer(network_policy={"mode": "restricted"})
 
     assert session.closed
+
+
+def _validation_error_from(payload):
+    session = DummySession(status_code=422, payload=payload)
+    client = _client_with(session)
+    with pytest.raises(CelestoValidationError) as excinfo:
+        client.computers.get("cmp_1")
+    return str(excinfo.value)
+
+
+def test_validation_error_names_each_invalid_field():
+    # The Celesto API's 422 shape: a generic detail plus the field errors.
+    message = _validation_error_from(
+        {
+            "detail": "Validation error",
+            "errors": [
+                {
+                    "type": "string_pattern_mismatch",
+                    "loc": ["body", "name"],
+                    "msg": "String should match pattern '^[a-z]+$'",
+                },
+                {
+                    "type": "value_error",
+                    "loc": ["body"],
+                    "msg": "Value error, Provide default_vcpus, default_ram_mb "
+                    "and default_disk_size_mb together",
+                },
+            ],
+            "status_code": 422,
+        }
+    )
+
+    assert message == (
+        "Validation error: name: String should match pattern '^[a-z]+$'; "
+        "Provide default_vcpus, default_ram_mb and default_disk_size_mb together"
+    )
+
+
+def test_validation_error_reads_fastapis_default_detail_list():
+    message = _validation_error_from(
+        {
+            "detail": [
+                {
+                    "loc": ["query", "limit"],
+                    "msg": "Input should be greater than 0",
+                }
+            ]
+        }
+    )
+
+    assert message == "Validation error: limit: Input should be greater than 0"
+
+
+def test_validation_error_without_field_errors_keeps_the_detail():
+    message = _validation_error_from({"detail": "Unknown sandbox template 'x'"})
+
+    assert message == "Validation error: Unknown sandbox template 'x'"

@@ -222,7 +222,7 @@ class Computer(MutableMapping[str, Any]):
         base_url: str | None = None,
         client: Any | None = None,
     ) -> list[dict[str, Any]]:
-        """List available computer templates."""
+        """List the built-in computer templates. Custom templates: ``Template.list()``."""
         sdk_client, owns_client = _make_client(
             client=client,
             api_key=api_key,

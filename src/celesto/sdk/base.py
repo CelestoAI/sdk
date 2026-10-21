@@ -15,6 +15,7 @@ from typing_extensions import Self
 
 from .exceptions import (
     CelestoAuthenticationError,
+    CelestoConflictError,
     CelestoNetworkError,
     CelestoNotFoundError,
     CelestoRateLimitError,
@@ -143,6 +144,7 @@ class _BaseClient:
         Raises:
             CelestoAuthenticationError: For 401/403 responses
             CelestoNotFoundError: For 404 responses
+            CelestoConflictError: For 409 responses
             CelestoValidationError: For 400/422 responses
             CelestoRateLimitError: For 429 responses
             CelestoServerError: For 5xx responses
@@ -260,6 +262,14 @@ class _BaseClient:
                 response=response,
             )
 
+        # Conflicts with the resource's current state. Keep "409" in the
+        # message: the CLI's stopped-computer check looks for it.
+        if status == 409:
+            raise CelestoConflictError(
+                f"Conflict (409): {error_message}",
+                response=response,
+            )
+
         # Validation errors
         if status in (400, 422):
             raise CelestoValidationError(
@@ -299,6 +309,16 @@ class _BaseClient:
             # Handle common API error formats
             if isinstance(data, dict):
                 detail = data.get("detail")
+                # Request validation (422) lists one entry per invalid field:
+                # the Celesto API puts them in "errors" next to a generic
+                # detail, FastAPI's default puts them in "detail" itself.
+                field_errors = data.get("errors")
+                if not isinstance(field_errors, list):
+                    field_errors = detail if isinstance(detail, list) else None
+                if field_errors:
+                    described = _describe_field_errors(field_errors)
+                    if described:
+                        return described
                 if isinstance(detail, dict):
                     message = detail.get("message") or detail.get("code")
                     if message:
@@ -312,3 +332,27 @@ class _BaseClient:
             return str(data)
         except (json.JSONDecodeError, ValueError):
             return response.text or f"HTTP {response.status_code}"
+
+
+# Where a field error came from; the field path after it is what users wrote.
+_REQUEST_PARTS = {"body", "query", "path", "header", "cookie"}
+
+
+def _describe_field_errors(errors: list[Any]) -> str:
+    """Turn 422 field errors into "field: message; ..." text.
+
+    ``loc`` is the path to the field, starting with the request part
+    ("body", "query", ...), which is dropped. An error about the whole body
+    has no field left and shows only its message. Pydantic's "Value error, "
+    prefix on custom validator messages is dropped too.
+    """
+    parts = []
+    for error in errors:
+        if not isinstance(error, dict) or not error.get("msg"):
+            continue
+        message = str(error["msg"]).removeprefix("Value error, ")
+        location = [str(part) for part in error.get("loc") or []]
+        if location and location[0] in _REQUEST_PARTS:
+            location = location[1:]
+        parts.append(f"{'.'.join(location)}: {message}" if location else message)
+    return "; ".join(parts)

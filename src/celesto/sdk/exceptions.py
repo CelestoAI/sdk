@@ -125,6 +125,26 @@ class CelestoServerError(CelestoError):
     pass
 
 
+class CelestoConflictError(CelestoServerError):
+    """Raised when the request conflicts with the resource's current state (409).
+
+    Examples: rebuilding a template while a build is queued or running,
+    reusing a template name, or creating a computer from a template that has
+    no ready build yet. The message carries the API's explanation.
+
+    It subclasses ``CelestoServerError`` because 409 used to surface as one,
+    so existing ``except CelestoServerError`` handlers keep catching it.
+
+    Example:
+        try:
+            template.rebuild()
+        except CelestoConflictError as e:
+            print(f"Try again later: {e}")
+    """
+
+    pass
+
+
 class CelestoTemplateBuildError(CelestoError):
     """Raised when waiting on a custom template whose build did not succeed.
 
