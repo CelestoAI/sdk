@@ -19,7 +19,7 @@ from .sdk import (
     Template,
 )
 
-__version__ = "0.0.14"
+__version__ = "0.0.15"
 
 __all__ = [
     "AgentArchivedError",
