@@ -1,4 +1,4 @@
-# Celesto
+# SDK has been moved to [Celesto](https://github.com/CelestoAI/celesto) now. Use `uv tool install celesto`
 
 [![PyPI version](https://badge.fury.io/py/celesto.svg)](https://pypi.org/project/celesto/)
 [![npm version](https://img.shields.io/npm/v/@celestoai/sdk.svg)](https://www.npmjs.com/package/@celestoai/sdk)
